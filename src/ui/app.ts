@@ -13,7 +13,8 @@ import {
 } from '../game/rules';
 import { runContest, trunksLook, trunksViolation } from '../game/scoring';
 import { getState, hasSave, mutate, setState, subscribe } from '../game/store';
-import { heroArt, heroStage, rivalArt, STAGE_LABEL, type ArtUse, type RivalUse, type Stage } from './art';
+import { COACH_NAME, COACH_ROLE, contestLine, introLines, resultLine, weekLine, type CoachLine } from '../game/coach';
+import { coachArt, heroArt, heroStage, rivalArt, STAGE_LABEL, type ArtUse, type RivalUse, type Stage } from './art';
 
 type Route = 'title' | 'create' | 'player' | 'training' | 'diet' | 'shop' | 'fitting' | 'contest' | 'result';
 const ui = {
@@ -24,8 +25,9 @@ const ui = {
   shopTab: 'tan' as 'tan' | 'trunks' | 'cond',
   preview: null as string | null,
   colorPick: {} as Record<string, string>,
-  modal: null as null | 'report' | 'restart' | 'contest' | 'rival',
+  modal: null as null | 'report' | 'restart' | 'contest' | 'rival' | 'intro' | 'coach',
   rival: '',
+  introStep: 0,
   create: { name: '', heightCm: 175, frame: 'meso' as Frame, category: 'bodybuilding' as Category, skinTone: 1 },
 };
 
@@ -47,10 +49,16 @@ function artFrame(stage: Stage, use: ArtUse, cls: string, overlay = '') {
 const rivalByName = (n: string) => RIVALS.find((r) => r.name === n);
 function rivalFace(id: string, cls = 'rf') {
   const url = rivalArt(id, 'portrait');
-  return url ? `<img class="${cls}" src="${url}" alt="" loading="lazy" decoding="async">` : '';
+  return url ? `<img class="${cls}" src="${url}" alt="" decoding="async">` : '';
 }
 function rivalStrip() {
   return `<div class="rv-strip">${RIVALS.map((r) => `<button class="rv" data-act="rival" data-v="${r.id}">${rivalArt(r.id, 'portrait') ? `<div class="art rv-art">${rivalFace(r.id, '')}</div>` : ''}<b>${r.name.split(' ')[0]}</b><span>${r.age}歳</span></button>`).join('')}</div>`;
+}
+
+// トレーナーのせりふ（顔＋名前＋文）。tap=true ならタップで詳細を開く
+function coachBox(l: CoachLine, tap = false) {
+  const url = coachArt(l.mood);
+  return `<div class="coach mood-${l.mood}"${tap ? ' data-act="coach"' : ''}>${url ? `<div class="art co-face"><img src="${url}" alt="" decoding="async"></div>` : ''}<div class="co-say"><b>${COACH_NAME}</b><p>${esc(l.text)}</p></div></div>`;
 }
 
 let toastTimer = 0;
@@ -215,6 +223,7 @@ function playerScreen(s: GameState) {
         <p class="stage">育成段階 <b>${STAGE_LABEL[heroStage(s)]}</b></p>
       </div>
     </div>
+    ${coachBox(weekLine(s), true)}
     <details class="sheets"><summary>体の資料（正面・背面・側面）</summary>
       <div>${(['sheet-front', 'sheet-back', 'sheet-side'] as ArtUse[]).map((u) => { const url = heroArt(heroStage(s), u); return url ? `<img src="${url}" alt="" loading="lazy">` : ''; }).join('')}</div>
     </details>
@@ -480,6 +489,7 @@ function resultScreen(s: GameState) {
   <div class="page">
     ${artFrame(heroStage(s), r.playerPlace === 1 ? 'win' : 'contest', 'result-art', r.playerPlace === 1 ? '<div class="burst win">優勝!!</div>' : '')}
     <div class="place"><span>${CATEGORIES[r.category].name}</span><b>${r.playerPlace}<small>位</small></b><em>${r.playerPlace === 1 ? '優勝 ─ IRON CROWN 獲得' : `${r.ranking.length}名中`}</em>${r.prize ? `<strong>賞金 ${yen(r.prize)}</strong>` : ''}</div>
+    ${coachBox(resultLine(s))}
     ${winnerCard(r)}
     <h3>順位</h3>
     <ol class="rank">${r.ranking.map((c) => `<li class="${c.isPlayer ? 'me' : ''}"><i>${c.place}</i><span>${c.isPlayer ? '' : rivalFace(rivalByName(c.name)?.id ?? '')}${esc(c.name)}</span><em>${fx(c.weight)}kg・${fx(c.bodyFat)}%</em><b>${fx(c.total, 1)}</b></li>`).join('')}</ol>
@@ -507,6 +517,7 @@ function modal(s: GameState | null) {
     return `<div class="modal"><div class="sheet report-sheet">
       ${artFrame(heroStage(s), 'training', 'rep-art', `<div class="rep-gains">${top.map((p, i) => `<div class="gain" style="--d:${0.15 + i * 0.12}s"><span>${PART_LABEL[p]}</span><b data-count="${r.devDelta[p].toFixed(2)}">+0.00</b></div>`).join('')}</div>${gain > 0.4 ? '<div class="burst">成長!!</div>' : ''}`)}
       <h3>第${r.week}週の結果</h3>
+      ${coachBox(weekLine(s))}
       <div class="rep-nums"><div><span>体重</span><b>${fx(r.weightAfter)}kg</b><em>${sgn(r.weightAfter - r.weightBefore)}</em></div>
       <div><span>体脂肪率</span><b>${fx(r.bfAfter)}%</b><em>${sgn(r.bfAfter - r.bfBefore)}</em></div>
       <div><span>収支</span><b>${yen(s.money)}</b><em>${r.moneyDelta >= 0 ? '+' : ''}${r.moneyDelta.toLocaleString()}</em></div></div>
@@ -520,8 +531,29 @@ function modal(s: GameState | null) {
       <button class="primary big" data-act="confirm-restart">新しい選手を作る</button><button class="ghost" data-act="close-modal">やめる</button></div></div>`;
   }
   if (ui.modal === 'contest') {
-    return `<div class="modal"><div class="sheet">${s ? artFrame(heroStage(s), 'contest', 'modal-art') : ''}<h3>大会に出場しますか？</h3><div class="lineup">${RIVALS.map((r) => rivalFace(r.id)).join('')}<span>ほか5名と競う</span></div><p>出場すると準備内容は変更できません。</p>
+    return `<div class="modal"><div class="sheet">${s ? artFrame(heroStage(s), 'contest', 'modal-art') : ''}<h3>大会に出場しますか？</h3>${s ? coachBox(contestLine(s)) : ''}<div class="lineup">${RIVALS.map((r) => rivalFace(r.id)).join('')}<span>ほか5名と競う</span></div><p>出場すると準備内容は変更できません。</p>
       <button class="primary big gold" data-act="confirm-compete">出場する</button><button class="ghost" data-act="close-modal">準備に戻る</button></div></div>`;
+  }
+  if (ui.modal === 'intro' && s) {
+    const lines = introLines(s);
+    const l = lines[Math.min(ui.introStep, lines.length - 1)];
+    const last = ui.introStep >= lines.length - 1;
+    const url = coachArt(l.mood);
+    return `<div class="modal"><div class="sheet intro-sheet">
+      ${url ? `<div class="art intro-art"><img src="${url}" alt="" decoding="async"></div>` : ''}
+      <div class="co-say big"><b>${COACH_NAME}<small>${COACH_ROLE}</small></b><p>${esc(l.text)}</p></div>
+      <button class="primary big" data-act="${last ? 'close-modal' : 'intro-next'}">${last ? 'はじめる' : '次へ'}</button></div></div>`;
+  }
+  if (ui.modal === 'coach') {
+    const pics = ['sheet-front', 'sheet-back', 'sheet-side'].map((k) => coachArt(k)).filter(Boolean) as string[];
+    const faces = (['serious', 'encourage', 'surprised', 'frustrated', 'achievement', 'nervous', 'joy'] as const).map((k) => coachArt(k)).filter(Boolean) as string[];
+    return `<div class="modal"><div class="sheet rival-sheet">
+      ${coachArt('serious') ? `<div class="art modal-art"><img src="${coachArt('serious')}" alt=""></div>` : ''}
+      <h3>${COACH_NAME}</h3><p class="meta">${COACH_ROLE}</p>
+      <p>あなたの担当トレーナー。厳しいが、結果はいつも一緒に受け止めてくれる。週の結果や大会でアドバイスをくれる。</p>
+      ${faces.length ? `<details class="sheets"><summary>表情</summary><div class="co-faces">${faces.map((u) => `<img src="${u}" alt="" loading="lazy">`).join('')}</div></details>` : ''}
+      ${pics.length ? `<details class="sheets"><summary>デザイン資料（正面・背面・側面）</summary><div>${pics.map((u) => `<img src="${u}" alt="" loading="lazy">`).join('')}</div></details>` : ''}
+      <button class="ghost" data-act="close-modal">閉じる</button></div></div>`;
   }
   if (ui.modal === 'rival') {
     const r = RIVALS.find((x) => x.id === ui.rival);
@@ -548,7 +580,7 @@ function render() {
   if (!s && !['title', 'create'].includes(ui.route)) ui.route = 'title';
   if (s?.phase === 'done' && ['training', 'diet'].includes(ui.route)) ui.route = 'result';
   let html = '';
-  if (ui.route === 'title') html = titleScreen();
+  if (ui.route === 'title') html = titleScreen() + modal(s); // 新しい選手で始める時の確認
   else if (ui.route === 'create') html = createScreen();
   else if (s) {
     let body = '';
@@ -617,6 +649,8 @@ root.addEventListener('click', (e) => {
       if (g.player.category === 'classic') toast('クラシック部門はクラシックカットの衣装が必要です（ショップで購入）');
       ui.pose = 'relaxed';
       setState(g);
+      ui.introStep = 0;
+      ui.modal = 'intro';
       go('player');
       return;
     }
@@ -631,6 +665,8 @@ root.addEventListener('click', (e) => {
     case 'pose': ui.pose = v as PoseId; if (s) void getViewer().setBody(bodyParams(s, ui.pose)); document.querySelectorAll('.pose-row .chip').forEach((c) => c.classList.toggle('on', (c as HTMLElement).dataset.v === v)); return;
     case 'frame': getViewer().frame(v as 'full'); return;
     case 'rival': ui.rival = v; ui.modal = 'rival'; render(); return;
+    case 'coach': ui.modal = 'coach'; render(); return;
+    case 'intro-next': ui.introStep++; render(); return;
   }
   if (!s) return;
   switch (act) {

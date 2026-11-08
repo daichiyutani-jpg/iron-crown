@@ -2,7 +2,7 @@
 // 置き場と命名は docs/ART_DIRECTION.md §6。
 import { PARTS } from '../body/anatomy';
 import { bodyStats, type GameState } from '../game/rules';
-import { HERO_ART, RIVAL_ART } from './artList';
+import { COACH_ART, HERO_ART, RIVAL_ART } from './artList';
 
 export type Stage = 'early' | 'mid' | 'contest';
 export type ArtUse = 'portrait' | 'training' | 'contest' | 'win' | 'sheet-front' | 'sheet-back' | 'sheet-side';
@@ -40,4 +40,9 @@ export type RivalUse = 'portrait' | 'contest' | 'sheet-front' | 'sheet-back' | '
 export function rivalArt(id: string, use: RivalUse): string | null {
   const key = `${id}-${use}`;
   return RIVAL_ART.includes(key) ? `${import.meta.env.BASE_URL}art/rivals/${key}.webp` : null;
+}
+
+/** トレーナーの絵（public/art/coach/<表情 or sheet-…>.webp）。無ければ null */
+export function coachArt(key: string): string | null {
+  return COACH_ART.includes(key) ? `${import.meta.env.BASE_URL}art/coach/${key}.webp` : null;
 }

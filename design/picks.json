@@ -40,5 +40,15 @@
  "r4-sheet-front": "r4-sheet-front_a.jpg",
  "r4-sheet-back": "r4-sheet-back_a.jpg",
  "r4-sheet-side": "r4-sheet-side_a.jpg",
- "r5-sheet-back": "r5-sheet-back_b.jpg"
+ "r5-sheet-back": "r5-sheet-back_b.jpg",
+ "c-serious": "c-serious_b.jpg",
+ "c-encourage": "c-encourage_a.jpg",
+ "c-surprised": "c-surprised_a.jpg",
+ "c-frustrated": "c-frustrated_a.jpg",
+ "c-achievement": "c-achievement_a.jpg",
+ "c-nervous": "c-nervous_a.jpg",
+ "c-joy": "c-joy_a.jpg",
+ "c-sheet-front": "c-sheet-front_a.jpg",
+ "c-sheet-back": "c-sheet-back_a_crop.jpg",
+ "c-sheet-side": "c-sheet-side_a_crop.jpg"
 }
