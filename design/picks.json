@@ -50,5 +50,8 @@
  "c-joy": "c-joy_a.jpg",
  "c-sheet-front": "c-sheet-front_a.jpg",
  "c-sheet-back": "c-sheet-back_a_crop.jpg",
- "c-sheet-side": "c-sheet-side_a_crop.jpg"
+ "c-sheet-side": "c-sheet-side_a_crop.jpg",
+ "v-stage": "v-stage_b.jpg",
+ "v-crowd": "v-crowd_a.jpg",
+ "v-podium": "v-podium_c.jpg"
 }

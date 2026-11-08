@@ -14,6 +14,7 @@ import {
 import { runContest, trunksLook, trunksViolation } from '../game/scoring';
 import { getState, hasSave, mutate, setState, subscribe } from '../game/store';
 import { COACH_NAME, COACH_ROLE, contestLine, introLines, resultLine, weekLine, type CoachLine } from '../game/coach';
+import { SHOW_STEPS, showHtml } from './show';
 import { coachArt, heroArt, heroStage, rivalArt, STAGE_LABEL, type ArtUse, type RivalUse, type Stage } from './art';
 
 type Route = 'title' | 'create' | 'player' | 'training' | 'diet' | 'shop' | 'fitting' | 'contest' | 'result';
@@ -28,6 +29,7 @@ const ui = {
   modal: null as null | 'report' | 'restart' | 'contest' | 'rival' | 'intro' | 'coach',
   rival: '',
   introStep: 0,
+  show: -1, // 大会演出の段（-1 = 出していない）
   create: { name: '', heightCm: 175, frame: 'meso' as Frame, category: 'bodybuilding' as Category, skinTone: 1 },
 };
 
@@ -490,6 +492,7 @@ function resultScreen(s: GameState) {
     ${artFrame(heroStage(s), r.playerPlace === 1 ? 'win' : 'contest', 'result-art', r.playerPlace === 1 ? '<div class="burst win">優勝!!</div>' : '')}
     <div class="place"><span>${CATEGORIES[r.category].name}</span><b>${r.playerPlace}<small>位</small></b><em>${r.playerPlace === 1 ? '優勝 ─ IRON CROWN 獲得' : `${r.ranking.length}名中`}</em>${r.prize ? `<strong>賞金 ${yen(r.prize)}</strong>` : ''}</div>
     ${coachBox(resultLine(s))}
+    <button class="ghost replay" data-act="show-replay">▶ 大会の様子をもう一度見る</button>
     ${winnerCard(r)}
     <h3>順位</h3>
     <ol class="rank">${r.ranking.map((c) => `<li class="${c.isPlayer ? 'me' : ''}"><i>${c.place}</i><span>${c.isPlayer ? '' : rivalFace(rivalByName(c.name)?.id ?? '')}${esc(c.name)}</span><em>${fx(c.weight)}kg・${fx(c.bodyFat)}%</em><b>${fx(c.total, 1)}</b></li>`).join('')}</ol>
@@ -593,7 +596,7 @@ function render() {
       case 'contest': body = s.result ? resultScreen(s) : contestScreen(s); break;
       case 'result': body = s.result ? resultScreen(s) : contestScreen(s); break;
     }
-    html = `${header(s)}<main class="r-${ui.route === 'contest' && s.result ? 'result' : ui.route}">${body}</main>${nav()}${modal(s)}`;
+    html = `${header(s)}<main class="r-${ui.route === 'contest' && s.result ? 'result' : ui.route}">${body}</main>${nav()}${modal(s)}${ui.show >= 0 && s.result ? showHtml(s, ui.show) : ''}`;
   }
   root.innerHTML = html;
   // 成長の数値を数え上げる
@@ -743,7 +746,21 @@ root.addEventListener('click', (e) => {
         x.phase = 'done';
       });
       ui.pose = 'frontDouble';
+      ui.show = 0;
       go('result');
+      return;
+    }
+    case 'show-next': {
+      e.stopPropagation();
+      ui.show++;
+      if (ui.show >= SHOW_STEPS) ui.show = -1;
+      render();
+      return;
+    }
+    case 'show-replay': ui.show = 0; render(); return;
+    case 'show-skip': {
+      ui.show = -1;
+      render();
       return;
     }
   }

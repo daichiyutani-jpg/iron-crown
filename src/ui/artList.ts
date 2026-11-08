@@ -1,4 +1,4 @@
-// scripts/art.py import が書き換える（public/art/hero/・rivals/・coach/ にある絵の一覧）
+// scripts/art.py import が書き換える（public/art/hero/・rivals/・coach/・venue/ にある絵の一覧）
 export const HERO_ART: string[] = [
   'contest-contest',
   'contest-portrait',
@@ -56,4 +56,9 @@ export const COACH_ART: string[] = [
   'sheet-front',
   'sheet-side',
   'surprised',
+];
+export const VENUE_ART: string[] = [
+  'crowd',
+  'podium',
+  'stage',
 ];
