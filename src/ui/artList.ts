@@ -1,0 +1,20 @@
+// scripts/art.py import が書き換える（public/art/hero/ にある絵の一覧）
+export const HERO_ART: string[] = [
+  'contest-contest',
+  'contest-portrait',
+  'contest-sheet-back',
+  'contest-sheet-front',
+  'contest-sheet-side',
+  'contest-training',
+  'contest-win',
+  'early-portrait',
+  'early-sheet-back',
+  'early-sheet-front',
+  'early-sheet-side',
+  'early-training',
+  'mid-portrait',
+  'mid-sheet-back',
+  'mid-sheet-front',
+  'mid-sheet-side',
+  'mid-training',
+];

@@ -13,6 +13,7 @@ import {
 } from '../game/rules';
 import { runContest, trunksLook, trunksViolation } from '../game/scoring';
 import { getState, hasSave, mutate, setState, subscribe } from '../game/store';
+import { heroArt, heroStage, STAGE_LABEL, type ArtUse, type Stage } from './art';
 
 type Route = 'title' | 'create' | 'player' | 'training' | 'diet' | 'shop' | 'fitting' | 'contest' | 'result';
 const ui = {
@@ -33,6 +34,13 @@ const yen = (n: number) => `¥${Math.round(n).toLocaleString('ja-JP')}`;
 const fx = (n: number, d = 1) => n.toFixed(d);
 const sgn = (n: number, d = 1) => `${n >= 0 ? '+' : ''}${n.toFixed(d)}`;
 const bar = (v: number, max = 100, cls = '') => `<div class="bar ${cls}"><i style="width:${Math.max(0, Math.min(100, (v / max) * 100))}%"></i></div>`;
+
+// 2D イラストの枠（絵が無い時は何も出さない）
+function artFrame(stage: Stage, use: ArtUse, cls: string, overlay = '') {
+  const url = heroArt(stage, use);
+  if (!url) return overlay ? `<div class="art ${cls} noimg">${overlay}</div>` : '';
+  return `<div class="art ${cls}"><img src="${url}" alt="" decoding="async">${overlay}</div>`;
+}
 
 let toastTimer = 0;
 function toast(msg: string, bad = false) {
@@ -124,7 +132,9 @@ function advanceButton(s: GameState) {
 function titleScreen() {
   const save = hasSave();
   const s = getState();
+  const art = heroArt('contest', 'contest');
   return `<div class="title">
+    ${art ? `<div class="title-art"><img src="${art}" alt=""></div>` : ''}
     <div class="title-mark">
       <div class="crown">◆</div>
       <h1>IRON<span>CROWN</span></h1>
@@ -186,8 +196,17 @@ function playerScreen(s: GameState) {
   const frameName = FRAME_INFO[s.player.frame][0];
   return `${viewerBlock()}
   <div class="page">
-    <div class="name-row"><h2>${esc(s.player.name)}</h2><span class="tag">${cat.name}</span></div>
-    <p class="meta">${s.player.heightCm}cm・${frameName}</p>
+    <div class="pcard">
+      ${artFrame(heroStage(s), 'portrait', 'pc-art')}
+      <div class="pc-info">
+        <div class="name-row"><h2>${esc(s.player.name)}</h2><span class="tag">${cat.name}</span></div>
+        <p class="meta">${s.player.heightCm}cm・${frameName}</p>
+        <p class="stage">育成段階 <b>${STAGE_LABEL[heroStage(s)]}</b></p>
+      </div>
+    </div>
+    <details class="sheets"><summary>体の資料（正面・背面・側面）</summary>
+      <div>${(['sheet-front', 'sheet-back', 'sheet-side'] as ArtUse[]).map((u) => { const url = heroArt(heroStage(s), u); return url ? `<img src="${url}" alt="" loading="lazy">` : ''; }).join('')}</div>
+    </details>
     <div class="stats4">
       <div><span>体重</span><b>${fx(st.weight)}<small>kg</small></b>${cap ? `<em class="${st.weight > cap ? 'bad' : ''}">上限 ${cap}kg</em>` : ''}</div>
       <div><span>体脂肪率</span><b>${fx(st.bf)}<small>%</small></b></div>
@@ -438,6 +457,7 @@ function resultScreen(s: GameState) {
   const keys = Object.keys(SCORE_LABEL) as ScoreKey[];
   return `${viewerBlock()}
   <div class="page">
+    ${artFrame(heroStage(s), r.playerPlace === 1 ? 'win' : 'contest', 'result-art', r.playerPlace === 1 ? '<div class="burst win">優勝!!</div>' : '')}
     <div class="place"><span>${CATEGORIES[r.category].name}</span><b>${r.playerPlace}<small>位</small></b><em>${r.playerPlace === 1 ? '優勝 ─ IRON CROWN 獲得' : `${r.ranking.length}名中`}</em>${r.prize ? `<strong>賞金 ${yen(r.prize)}</strong>` : ''}</div>
     <h3>順位</h3>
     <ol class="rank">${r.ranking.map((c) => `<li class="${c.isPlayer ? 'me' : ''}"><i>${c.place}</i><span>${esc(c.name)}</span><em>${fx(c.weight)}kg・${fx(c.bodyFat)}%</em><b>${fx(c.total, 1)}</b></li>`).join('')}</ol>
@@ -460,7 +480,10 @@ function modal(s: GameState | null) {
   if (!ui.modal) return '';
   if (ui.modal === 'report' && s?.lastReport) {
     const r = s.lastReport;
-    return `<div class="modal"><div class="sheet">
+    const gain = PARTS.reduce((a, p) => a + Math.max(0, r.devDelta[p]), 0);
+    const top = [...PARTS].sort((a, b) => r.devDelta[b] - r.devDelta[a]).slice(0, 4).filter((p) => r.devDelta[p] > 0);
+    return `<div class="modal"><div class="sheet report-sheet">
+      ${artFrame(heroStage(s), 'training', 'rep-art', `<div class="rep-gains">${top.map((p, i) => `<div class="gain" style="--d:${0.15 + i * 0.12}s"><span>${PART_LABEL[p]}</span><b data-count="${r.devDelta[p].toFixed(2)}">+0.00</b></div>`).join('')}</div>${gain > 0.4 ? '<div class="burst">成長!!</div>' : ''}`)}
       <h3>第${r.week}週の結果</h3>
       <div class="rep-nums"><div><span>体重</span><b>${fx(r.weightAfter)}kg</b><em>${sgn(r.weightAfter - r.weightBefore)}</em></div>
       <div><span>体脂肪率</span><b>${fx(r.bfAfter)}%</b><em>${sgn(r.bfAfter - r.bfBefore)}</em></div>
@@ -475,7 +498,7 @@ function modal(s: GameState | null) {
       <button class="primary big" data-act="confirm-restart">新しい選手を作る</button><button class="ghost" data-act="close-modal">やめる</button></div></div>`;
   }
   if (ui.modal === 'contest') {
-    return `<div class="modal"><div class="sheet"><h3>大会に出場しますか？</h3><p>出場すると準備内容は変更できません。</p>
+    return `<div class="modal"><div class="sheet">${s ? artFrame(heroStage(s), 'contest', 'modal-art') : ''}<h3>大会に出場しますか？</h3><p>出場すると準備内容は変更できません。</p>
       <button class="primary big gold" data-act="confirm-compete">出場する</button><button class="ghost" data-act="close-modal">準備に戻る</button></div></div>`;
   }
   return '';
@@ -505,6 +528,17 @@ function render() {
     html = `${header(s)}<main class="r-${ui.route === 'contest' && s.result ? 'result' : ui.route}">${body}</main>${nav()}${modal(s)}`;
   }
   root.innerHTML = html;
+  // 成長の数値を数え上げる
+  root.querySelectorAll<HTMLElement>('[data-count]').forEach((el, i) => {
+    const to = Number(el.dataset.count);
+    const t0 = performance.now() + 250 + i * 120;
+    const step = (t: number) => {
+      const k = Math.min(1, Math.max(0, (t - t0) / 700));
+      el.textContent = `+${(to * (1 - (1 - k) ** 3)).toFixed(2)}`;
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  });
   root.className = ui.route === 'title' || ui.route === 'create' ? 'pre' : 'game';
   const sc = document.querySelector('main');
   if (sc && sameRoute === ui.route) sc.scrollTop = scroll;

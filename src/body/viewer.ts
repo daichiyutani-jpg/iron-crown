@@ -2,7 +2,7 @@
 import {
   ACESFilmicToneMapping, BufferAttribute, BufferGeometry, CanvasTexture, Color, CylinderGeometry, DirectionalLight,
   Group, HemisphereLight, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, PCFShadowMap, PerspectiveCamera,
-  PMREMGenerator, Scene, SpotLight, SRGBColorSpace, Vector3, WebGLRenderer, CircleGeometry, BackSide, Fog,
+  PMREMGenerator, Scene, ShaderMaterial, SpotLight, SRGBColorSpace, Vector3, WebGLRenderer, CircleGeometry, BackSide, Fog,
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
@@ -109,6 +109,22 @@ function trunksTexture(t: TrunksLook): { map: CanvasTexture; emissive: CanvasTex
   return { map, emissive: em };
 }
 
+// アニメ調の輪郭線（裏面を法線方向へ少し押し出して黒く塗る。画面上の太さがほぼ一定になるよう距離で補正）
+function makeOutlineMaterial() {
+  return new ShaderMaterial({
+    side: BackSide,
+    uniforms: { uWidth: { value: 0.0011 }, uColor: { value: new Color('#0b0705') } },
+    vertexShader: `uniform float uWidth;
+void main() {
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  vec3 n = normalize(normalMatrix * normal);
+  mv.xyz += n * uWidth * clamp(-mv.z, 0.6, 6.0);
+  gl_Position = projectionMatrix * mv;
+}`,
+    fragmentShader: `uniform vec3 uColor; void main() { gl_FragColor = vec4(uColor, 1.0); }`,
+  });
+}
+
 // 頭髪・眉・目・唇はピクセル単位で塗る（頂点色だと格子の段が見える）
 function addFaceShader(m: MeshPhysicalMaterial) {
   m.onBeforeCompile = (sh) => {
@@ -205,6 +221,8 @@ class BodyViewer {
   private overlay: HTMLDivElement;
   private group = new Group();
   private skin: Mesh | null = null;
+  private outline: Mesh | null = null;
+  private outlineMat = makeOutlineMaterial();
   private trunks: Mesh | null = null;
   private skinMat = (() => { const m = new MeshPhysicalMaterial({ vertexColors: true, roughness: 0.52, sheen: 0.25, sheenRoughness: 0.6, sheenColor: new Color('#7a2e1c') }); addFaceShader(m); return m; })();
   private trunksMat = makeTrunksMaterial();
@@ -249,11 +267,11 @@ class BodyViewer {
     this.scene.fog = new Fog('#0c0c0e', 7, 14);
 
     // ステージ
-    const floor = new Mesh(new CircleGeometry(3.2, 64), new MeshStandardMaterial({ color: '#070708', roughness: 0.55, metalness: 0.05 }));
+    const floor = new Mesh(new CircleGeometry(3.2, 64), new MeshStandardMaterial({ color: '#060a14', roughness: 0.55, metalness: 0.05 }));
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     this.scene.add(floor);
-    const back = new Mesh(new CylinderGeometry(6, 6, 8, 48, 1, true), new MeshStandardMaterial({ color: '#101013', roughness: 1, side: BackSide }));
+    const back = new Mesh(new CylinderGeometry(6, 6, 8, 48, 1, true), new MeshStandardMaterial({ color: '#0b1124', roughness: 1, side: BackSide }));
     back.position.y = 3.5;
     this.scene.add(back);
 
@@ -424,6 +442,7 @@ class BodyViewer {
     tg.setIndex(ti);
 
     if (this.skin) { this.skin.geometry.dispose(); this.group.remove(this.skin); }
+    if (this.outline) this.group.remove(this.outline);
     if (this.trunks) { this.trunks.geometry.dispose(); this.group.remove(this.trunks); }
     this.skin = new Mesh(geo, this.skinMat);
     this.skin.castShadow = true;
@@ -431,7 +450,8 @@ class BodyViewer {
     this.trunks = new Mesh(tg, this.trunksMat);
     this.trunks.castShadow = true;
     this.trunks.receiveShadow = true;
-    this.group.add(this.skin, this.trunks);
+    this.outline = new Mesh(geo, this.outlineMat);
+    this.group.add(this.skin, this.trunks, this.outline);
     geo.computeBoundingBox();
     this.group.position.y = -geo.boundingBox!.min.y;
     this.paintSkin();

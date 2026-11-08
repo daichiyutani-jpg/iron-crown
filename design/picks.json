@@ -1,0 +1,9 @@
+{
+ "early-portrait": "early-portrait_c.jpg", "early-training": "early-training_b.jpg",
+ "early-sheet-front": "early-sheet-front_a.jpg", "early-sheet-back": "early-sheet-back_a.jpg", "early-sheet-side": "early-sheet-side_a.jpg",
+ "mid-portrait": "mid-portrait_a.jpg", "mid-training": "mid-training_a.jpg",
+ "mid-sheet-front": "mid-sheet-front_a.jpg", "mid-sheet-back": "mid-sheet-back_a.jpg", "mid-sheet-side": "mid-sheet-side_a.jpg",
+ "contest-portrait": "contest-portrait_b_top.jpg", "contest-training": "contest-training_b.jpg",
+ "contest-contest": "contest-contest_a.jpg", "contest-win": "contest-win_a.jpg",
+ "contest-sheet-front": "contest-sheet-front_a.jpg", "contest-sheet-back": "contest-sheet-back_a.jpg", "contest-sheet-side": "contest-sheet-side_a.jpg"
+}
