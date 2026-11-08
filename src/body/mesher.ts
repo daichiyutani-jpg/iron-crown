@@ -1,6 +1,6 @@
 // SDF の格子評価 → Surface Nets による表面メッシュ化。
 // 各プリミティブは自分の外接箱の中だけを評価し、多項式 smooth-min で結合する。
-import { Kind, type BuiltBody, type PosedPrim } from './anatomy';
+import { BONES, Kind, type BuiltBody, type PosedPrim } from './anatomy';
 
 export interface BodyMesh {
   positions: Float32Array;
@@ -30,7 +30,9 @@ function primDist(p: PosedPrim, x: number, y: number, z: number): number {
   return k1 === 0 ? -Math.min(p.r[0], p.r[1], p.r[2]) : (k0 * (k0 - 1)) / k1;
 }
 
-export function meshBody(body: BuiltBody, h: number): BodyMesh {
+export type Box = [number, number, number, number, number, number];
+
+export function meshBody(body: BuiltBody, h: number, clip?: Box): BodyMesh {
   const { prims, fat } = body;
   // 範囲
   let minX = Infinity, minY = Infinity, minZ = Infinity, maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
@@ -51,6 +53,10 @@ export function meshBody(body: BuiltBody, h: number): BodyMesh {
     }
     return [x0, y0, z0, x1, y1, z1];
   });
+  if (clip) {
+    minX = Math.max(minX, clip[0]); minY = Math.max(minY, clip[1]); minZ = Math.max(minZ, clip[2]);
+    maxX = Math.min(maxX, clip[3]); maxY = Math.min(maxY, clip[4]); maxZ = Math.min(maxZ, clip[5]);
+  }
   minX -= h * 2; minY -= h * 2; minZ -= h * 2;
   const nx = Math.ceil((maxX - minX) / h) + 3;
   const ny = Math.ceil((maxY - minY) / h) + 3;
@@ -200,4 +206,52 @@ export function meshBody(body: BuiltBody, h: number): BodyMesh {
     rest[i * 3 + 2] = m[8] * qx + m[9] * qy + m[10] * qz + hd[2];
   }
   return { positions, normals, rest, ao, index: new Uint32Array(idx) };
+}
+
+const HEAD = BONES.indexOf('head');
+/** 頭部の外接箱（姿勢後の座標） */
+export function headBox(body: BuiltBody, margin: number): Box {
+  const b: Box = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
+  for (const p of body.prims) {
+    if (p.bone !== HEAD || p.kind === Kind.Subtract) continue;
+    const e = p.ext + margin;
+    for (let a = 0; a < 3; a++) { b[a] = Math.min(b[a], p.c[a] - e); b[a + 3] = Math.max(b[a + 3], p.c[a] + e); }
+  }
+  return b;
+}
+
+/** 体全体（粗い格子）と頭部（細かい格子）を作り、首の高さで継ぎ合わせる */
+export function meshBodyDetailed(body: BuiltBody, h: number): BodyMesh {
+  const coarse = meshBody(body, h);
+  const box = headBox(body, body.fat + 0.02);
+  box[1] -= 0.03;
+  const fine = meshBody(body, h * 0.5, box);
+  const seam = box[1] + h * 1.5;
+  const keep = (m: BodyMesh, below: boolean, overlap: number) => {
+    const out: number[] = [];
+    for (let t = 0; t < m.index.length; t += 3) {
+      const a = m.index[t], b = m.index[t + 1], c = m.index[t + 2];
+      const cy = (m.positions[a * 3 + 1] + m.positions[b * 3 + 1] + m.positions[c * 3 + 1]) / 3;
+      const cx = (m.positions[a * 3] + m.positions[b * 3] + m.positions[c * 3]) / 3;
+      const cz = (m.positions[a * 3 + 2] + m.positions[b * 3 + 2] + m.positions[c * 3 + 2]) / 3;
+      // 粗い側は内側へ 2h、細かい側は h まで残し、境目を必ず重ねる（隙間を作らない）
+      const mg = below ? h * 2 : h;
+      const inBox = cx > box[0] + mg && cx < box[3] - mg && cz > box[2] + mg && cz < box[5] - mg;
+      if (below ? !inBox || cy < seam + overlap : inBox && cy > seam) out.push(a, b, c);
+    }
+    return out;
+  };
+  const ci = keep(coarse, true, h), fi = keep(fine, false, 0);
+  const nc = coarse.positions.length / 3;
+  const cat = (a: Float32Array, b: Float32Array) => { const r = new Float32Array(a.length + b.length); r.set(a); r.set(b, a.length); return r; };
+  const index = new Uint32Array(ci.length + fi.length);
+  index.set(ci);
+  for (let i = 0; i < fi.length; i++) index[ci.length + i] = fi[i] + nc;
+  return {
+    positions: cat(coarse.positions, fine.positions),
+    normals: cat(coarse.normals, fine.normals),
+    rest: cat(coarse.rest, fine.rest),
+    ao: cat(coarse.ao, fine.ao),
+    index,
+  };
 }

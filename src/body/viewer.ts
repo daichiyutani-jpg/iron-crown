@@ -30,7 +30,6 @@ export interface Look {
 const SKIN_BASE = [new Color('#e8bfa0'), new Color('#cf9a76'), new Color('#9c6a4a')];
 const TAN_DEEP = new Color('#4a2716');
 const TAN_ORANGE = new Color('#a8551f');
-const HAIR = new Color('#17110d');
 
 function hash3(x: number, y: number, z: number) {
   let h = (x * 374761393 + y * 668265263 + z * 2147483647) | 0;
@@ -110,6 +109,43 @@ function trunksTexture(t: TrunksLook): { map: CanvasTexture; emissive: CanvasTex
   return { map, emissive: em };
 }
 
+// 頭髪・眉・目・唇はピクセル単位で塗る（頂点色だと格子の段が見える）
+function addFaceShader(m: MeshPhysicalMaterial) {
+  m.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', `#include <common>
+attribute vec3 aRest;
+attribute float aAo;
+varying vec3 vRest;
+varying float vAo;`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+vRest = aRest; vAo = aAo;`);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+varying vec3 vRest;
+varying float vAo;`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+if (vRest.y > 1.55) {
+  vec3 p = vRest; float ax = abs(p.x);
+  float shade = 0.25 + 0.75 * vAo;
+  // 生え際: 前は高く、耳の上で下がり、後ろは襟足まで
+  float line = p.z > 0.0 ? mix(1.664, 1.699, smoothstep(0.0, 0.07, p.z)) : mix(1.664, 1.6, smoothstep(0.0, -0.06, p.z));
+  float hair = smoothstep(line - 0.003, line + 0.004, p.y);
+  float ear = smoothstep(0.066, 0.074, ax) * smoothstep(0.035, 0.02, abs(p.z + 0.006)) * smoothstep(1.672, 1.664, p.y);
+  hair *= 1.0 - ear;
+  float wisp = 0.85 + 0.15 * sin(p.x * 900.0 + p.z * 700.0) * sin(p.y * 1100.0);
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.009, 0.006, 0.004) * shade * wisp, hair * 0.96);
+  float brow = exp(-pow((p.y - 1.6745 - 0.04 * (ax - 0.03) * (ax - 0.03) * 40.0) / 0.0042, 2.0))
+    * smoothstep(0.072, 0.082, p.z) * smoothstep(0.009, 0.016, ax) * smoothstep(0.054, 0.045, ax);
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.012, 0.008, 0.006) * shade, brow * 0.8);
+  float eye = exp(-pow((p.y - 1.6555) / 0.0042, 2.0) - pow((ax - 0.031) / 0.011, 2.0)) * smoothstep(0.062, 0.074, p.z);
+  diffuseColor.rgb *= 1.0 - eye * 0.75;
+  float lip = exp(-pow((p.y - 1.598) / 0.0035, 2.0) - pow(ax / 0.017, 2.0)) * smoothstep(0.082, 0.09, p.z);
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.2, 0.06, 0.045) * shade, lip * 0.45);
+}`);
+  };
+}
+
 const TRUNKS_GLSL = `
 uniform float uCut;
 varying vec3 vRest;
@@ -170,7 +206,7 @@ class BodyViewer {
   private group = new Group();
   private skin: Mesh | null = null;
   private trunks: Mesh | null = null;
-  private skinMat = new MeshPhysicalMaterial({ vertexColors: true, roughness: 0.52, sheen: 0.25, sheenRoughness: 0.6, sheenColor: new Color('#7a2e1c') });
+  private skinMat = (() => { const m = new MeshPhysicalMaterial({ vertexColors: true, roughness: 0.52, sheen: 0.25, sheenRoughness: 0.6, sheenColor: new Color('#7a2e1c') }); addFaceShader(m); return m; })();
   private trunksMat = makeTrunksMaterial();
   private worker: Worker;
   private reqId = 0;
@@ -352,6 +388,10 @@ class BodyViewer {
     geo.setAttribute('position', new BufferAttribute(mesh.positions, 3));
     geo.setAttribute('normal', new BufferAttribute(mesh.normals, 3));
     geo.setAttribute('color', new BufferAttribute(new Float32Array(mesh.positions.length), 3));
+    const restN = new Float32Array(mesh.rest.length);
+    for (let i = 0; i < restN.length; i++) restN[i] = mesh.rest[i] / scale;
+    geo.setAttribute('aRest', new BufferAttribute(restN, 3));
+    geo.setAttribute('aAo', new BufferAttribute(mesh.ao, 1));
     geo.setIndex(new BufferAttribute(mesh.index, 1));
     // トランクス: 周辺の三角形を抜き出して少し浮かせ、境界はシェーダーでピクセル単位に切り抜く
     const n = mesh.positions.length / 3;
@@ -418,15 +458,6 @@ class BodyViewer {
       let a = amt * (1 + unev * (nz * 0.55 + extremity * 0.35));
       a = Math.max(0, Math.min(0.97, a));
       c.copy(base).lerp(deep, a);
-      // 頭髪・眉
-      if (y > 1.548) {
-        const hairTop = y > 1.72 || (y > 1.645 && z < -0.03) || (y > 1.695 && z < 0.05) || (y > 1.67 && Math.abs(x) > 0.06 && z < 0.0);
-        const brow = y > 1.68 && y < 1.694 && z > 0.07 && Math.abs(x) > 0.012 && Math.abs(x) < 0.05;
-        if (hairTop) c.copy(HAIR);
-        else if (brow) c.lerp(HAIR, 0.7);
-        if (y > 1.661 && y < 1.676 && z > 0.074 && Math.abs(x) > 0.017 && Math.abs(x) < 0.042) c.multiplyScalar(0.5);
-        if (y > 1.608 && y < 1.62 && z > 0.08 && Math.abs(x) < 0.018) c.lerp(new Color('#6b3a30'), 0.5);
-      }
       const ao = mesh.ao[i];
       c.multiplyScalar(0.25 + 0.75 * ao);
       arr[i * 3] = c.r; arr[i * 3 + 1] = c.g; arr[i * 3 + 2] = c.b;
