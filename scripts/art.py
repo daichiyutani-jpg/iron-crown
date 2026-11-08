@@ -2,7 +2,7 @@
 
   python scripts/art.py fetch design/results.json   # {"<key>": ["<URL>", ...]} → design/candidates/<key>_a.jpg ...
   python scripts/art.py sheet                       # 候補を並べた確認用シート design/candidates/_sheet_<段階>.jpg
-  python scripts/art.py import                      # design/picks.json {"<key>": "<候補ファイル名>"} → public/art/hero/<key>.webp と src/ui/artList.ts
+  python scripts/art.py import                      # design/picks.json {"<key>": "<候補ファイル名>"} → public/art/hero|rivals/<key>.webp と src/ui/artList.ts
 """
 import json
 import string
@@ -15,6 +15,7 @@ from PIL import Image, ImageDraw
 ROOT = Path(__file__).resolve().parent.parent
 CAND = ROOT / 'design' / 'candidates'
 OUT = ROOT / 'public' / 'art' / 'hero'
+OUT_R = ROOT / 'public' / 'art' / 'rivals'
 sys.stdout.reconfigure(encoding='utf-8')
 
 
@@ -56,18 +57,21 @@ def sheet():
 
 
 def do_import():
+    """picks.json の r1〜r5 で始まるキーはライバル（public/art/rivals/）、それ以外は主人公（public/art/hero/）"""
     picks = json.loads((ROOT / 'design' / 'picks.json').read_text(encoding='utf-8'))
-    OUT.mkdir(parents=True, exist_ok=True)
+    for d in (OUT, OUT_R): d.mkdir(parents=True, exist_ok=True)
     for key, fn in picks.items():
         im = Image.open(CAND / fn).convert('RGB')
         if im.width > 832:
             im = im.resize((832, round(832 * im.height / im.width)), Image.LANCZOS)
-        im.save(OUT / f'{key}.webp', quality=82, method=6)
-    keys = sorted(p.stem for p in OUT.glob('*.webp'))
+        dst = OUT_R if key[0] == 'r' and key[1].isdigit() else OUT
+        im.save(dst / f'{key}.webp', quality=82, method=6)
+    lst = lambda d: ''.join(f"  '{p.stem}',\n" for p in sorted(d.glob('*.webp')))
     (ROOT / 'src' / 'ui' / 'artList.ts').write_text(
-        '// scripts/art.py import が書き換える（public/art/hero/ にある絵の一覧）\nexport const HERO_ART: string[] = [\n'
-        + ''.join(f"  '{k}',\n" for k in keys) + '];\n', encoding='utf-8')
-    print('imported', len(picks), 'total', len(keys))
+        '// scripts/art.py import が書き換える（public/art/hero/ と public/art/rivals/ にある絵の一覧）\n'
+        'export const HERO_ART: string[] = [\n' + lst(OUT) + '];\n'
+        'export const RIVAL_ART: string[] = [\n' + lst(OUT_R) + '];\n', encoding='utf-8')
+    print('imported', len(picks))
 
 
 if __name__ == '__main__':

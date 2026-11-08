@@ -1,4 +1,4 @@
-// scripts/art.py import が書き換える（public/art/hero/ にある絵の一覧）
+// scripts/art.py import が書き換える（public/art/hero/ と public/art/rivals/ にある絵の一覧）
 export const HERO_ART: string[] = [
   'contest-contest',
   'contest-portrait',
@@ -17,4 +17,31 @@ export const HERO_ART: string[] = [
   'mid-sheet-front',
   'mid-sheet-side',
   'mid-training',
+];
+export const RIVAL_ART: string[] = [
+  'r1-contest',
+  'r1-portrait',
+  'r1-sheet-back',
+  'r1-sheet-front',
+  'r1-sheet-side',
+  'r2-contest',
+  'r2-portrait',
+  'r2-sheet-back',
+  'r2-sheet-front',
+  'r2-sheet-side',
+  'r3-contest',
+  'r3-portrait',
+  'r3-sheet-back',
+  'r3-sheet-front',
+  'r3-sheet-side',
+  'r4-contest',
+  'r4-portrait',
+  'r4-sheet-back',
+  'r4-sheet-front',
+  'r4-sheet-side',
+  'r5-contest',
+  'r5-portrait',
+  'r5-sheet-back',
+  'r5-sheet-front',
+  'r5-sheet-side',
 ];

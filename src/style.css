@@ -285,3 +285,20 @@ main { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bot
 .sheets summary { font-size: 12px; color: var(--gold2); cursor: pointer; padding: 6px 0; }
 .sheets div { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .sheets img { width: 100%; border-radius: 8px; border: 1px solid var(--line); background: #ddd; }
+
+/* ライバル */
+.rv-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 2px 0 12px; }
+.rv { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 4px 4px 6px; color: var(--text); display: flex; flex-direction: column; align-items: center; gap: 2px; font: inherit; cursor: pointer; }
+.rv-art { width: 100%; aspect-ratio: 3 / 4; border-radius: 7px; }
+.rv-art img { object-position: 50% 12%; }
+.rv b { font-size: 12px; } .rv span { font-size: 10px; color: var(--sub); }
+img.rf { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; object-position: 50% 14%; border: 1px solid var(--line); vertical-align: middle; margin-right: 6px; background: #152038; }
+.lineup { display: flex; align-items: center; gap: 2px; margin: 4px 0 2px; }
+.lineup img.rf { width: 34px; height: 34px; margin-right: -6px; border: 2px solid var(--panel); }
+.lineup span { margin-left: 12px; font-size: 12px; color: var(--sub); }
+.rival-sheet .modal-art img { object-position: 50% 10%; }
+.rv-pics { grid-template-columns: repeat(2, 1fr) !important; }
+.winner { display: flex; gap: 12px; align-items: center; background: linear-gradient(90deg, #151d33, #0f1628); border: 1px solid var(--line); border-radius: 12px; padding: 8px; margin: 10px 0 4px; }
+.winner .art { width: 84px; height: 112px; flex: none; }
+.winner .art img { object-position: 50% 8%; }
+.winner span { font-size: 11px; color: var(--gold); letter-spacing: .1em; } .winner b { display: block; font-size: 16px; } .winner p { margin: 3px 0 0; font-size: 12px; color: var(--sub); }

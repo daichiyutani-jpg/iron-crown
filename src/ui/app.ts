@@ -13,7 +13,7 @@ import {
 } from '../game/rules';
 import { runContest, trunksLook, trunksViolation } from '../game/scoring';
 import { getState, hasSave, mutate, setState, subscribe } from '../game/store';
-import { heroArt, heroStage, STAGE_LABEL, type ArtUse, type Stage } from './art';
+import { heroArt, heroStage, rivalArt, STAGE_LABEL, type ArtUse, type RivalUse, type Stage } from './art';
 
 type Route = 'title' | 'create' | 'player' | 'training' | 'diet' | 'shop' | 'fitting' | 'contest' | 'result';
 const ui = {
@@ -24,7 +24,8 @@ const ui = {
   shopTab: 'tan' as 'tan' | 'trunks' | 'cond',
   preview: null as string | null,
   colorPick: {} as Record<string, string>,
-  modal: null as null | 'report' | 'restart' | 'contest',
+  modal: null as null | 'report' | 'restart' | 'contest' | 'rival',
+  rival: '',
   create: { name: '', heightCm: 175, frame: 'meso' as Frame, category: 'bodybuilding' as Category, skinTone: 1 },
 };
 
@@ -40,6 +41,16 @@ function artFrame(stage: Stage, use: ArtUse, cls: string, overlay = '') {
   const url = heroArt(stage, use);
   if (!url) return overlay ? `<div class="art ${cls} noimg">${overlay}</div>` : '';
   return `<div class="art ${cls}"><img src="${url}" alt="" decoding="async">${overlay}</div>`;
+}
+
+// ライバルの顔（小さい丸）と、ライバルを並べた帯
+const rivalByName = (n: string) => RIVALS.find((r) => r.name === n);
+function rivalFace(id: string, cls = 'rf') {
+  const url = rivalArt(id, 'portrait');
+  return url ? `<img class="${cls}" src="${url}" alt="" loading="lazy" decoding="async">` : '';
+}
+function rivalStrip() {
+  return `<div class="rv-strip">${RIVALS.map((r) => `<button class="rv" data-act="rival" data-v="${r.id}">${rivalArt(r.id, 'portrait') ? `<div class="art rv-art">${rivalFace(r.id, '')}</div>` : ''}<b>${r.name.split(' ')[0]}</b><span>${r.age}歳</span></button>`).join('')}</div>`;
 }
 
 let toastTimer = 0;
@@ -207,6 +218,8 @@ function playerScreen(s: GameState) {
     <details class="sheets"><summary>体の資料（正面・背面・側面）</summary>
       <div>${(['sheet-front', 'sheet-back', 'sheet-side'] as ArtUse[]).map((u) => { const url = heroArt(heroStage(s), u); return url ? `<img src="${url}" alt="" loading="lazy">` : ''; }).join('')}</div>
     </details>
+    <h3>ライバル <small>タップで詳しく</small></h3>
+    ${rivalStrip()}
     <div class="stats4">
       <div><span>体重</span><b>${fx(st.weight)}<small>kg</small></b>${cap ? `<em class="${st.weight > cap ? 'bad' : ''}">上限 ${cap}kg</em>` : ''}</div>
       <div><span>体脂肪率</span><b>${fx(st.bf)}<small>%</small></b></div>
@@ -450,6 +463,14 @@ function contestScreen(s: GameState) {
 }
 
 // ---- 結果 ----
+// 主人公が優勝できなかった時、優勝したライバルの大会の絵を出す
+function winnerCard(r: NonNullable<GameState['result']>) {
+  const w = r.ranking.find((c) => c.place === 1);
+  const rv = w && !w.isPlayer ? rivalByName(w.name) : undefined;
+  const url = rv ? rivalArt(rv.id, 'contest') : null;
+  if (!rv || !url) return '';
+  return `<div class="winner"><div class="art"><img src="${url}" alt="" decoding="async"></div><div><span>優勝</span><b>${esc(rv.name)}</b><p>${esc(rv.style)}</p></div></div>`;
+}
 function resultScreen(s: GameState) {
   const r = s.result!;
   const me = r.ranking.find((c) => c.isPlayer)!;
@@ -459,8 +480,9 @@ function resultScreen(s: GameState) {
   <div class="page">
     ${artFrame(heroStage(s), r.playerPlace === 1 ? 'win' : 'contest', 'result-art', r.playerPlace === 1 ? '<div class="burst win">優勝!!</div>' : '')}
     <div class="place"><span>${CATEGORIES[r.category].name}</span><b>${r.playerPlace}<small>位</small></b><em>${r.playerPlace === 1 ? '優勝 ─ IRON CROWN 獲得' : `${r.ranking.length}名中`}</em>${r.prize ? `<strong>賞金 ${yen(r.prize)}</strong>` : ''}</div>
+    ${winnerCard(r)}
     <h3>順位</h3>
-    <ol class="rank">${r.ranking.map((c) => `<li class="${c.isPlayer ? 'me' : ''}"><i>${c.place}</i><span>${esc(c.name)}</span><em>${fx(c.weight)}kg・${fx(c.bodyFat)}%</em><b>${fx(c.total, 1)}</b></li>`).join('')}</ol>
+    <ol class="rank">${r.ranking.map((c) => `<li class="${c.isPlayer ? 'me' : ''}"><i>${c.place}</i><span>${c.isPlayer ? '' : rivalFace(rivalByName(c.name)?.id ?? '')}${esc(c.name)}</span><em>${fx(c.weight)}kg・${fx(c.bodyFat)}%</em><b>${fx(c.total, 1)}</b></li>`).join('')}</ol>
     <h3>評価内訳（あなた vs ${esc(r.compareWith)}）</h3>
     <div class="cmp">${keys.map((k) => {
       const d = me.scores[k] - other.scores[k];
@@ -470,7 +492,7 @@ function resultScreen(s: GameState) {
     <h3>良かった点</h3><ul class="report">${r.good.length ? r.good.map((g) => `<li>${esc(g)}</li>`).join('') : '<li>ライバルを上回った項目はなかった。</li>'}</ul>
     <h3>次回の改善点</h3><ul class="report">${r.improve.map((g) => `<li>${esc(g)}</li>`).join('')}</ul>
     <h3>ライバル</h3>
-    <div class="rivals">${RIVALS.map((rv) => `<div><b>${rv.name}</b><span>${rv.age}歳・${rv.heightCm}cm</span><p>${rv.style}</p></div>`).join('')}</div>
+    ${rivalStrip()}
     <button class="primary big" data-act="restart">新しい選手で再挑戦</button>
   </div>`;
 }
@@ -498,8 +520,22 @@ function modal(s: GameState | null) {
       <button class="primary big" data-act="confirm-restart">新しい選手を作る</button><button class="ghost" data-act="close-modal">やめる</button></div></div>`;
   }
   if (ui.modal === 'contest') {
-    return `<div class="modal"><div class="sheet">${s ? artFrame(heroStage(s), 'contest', 'modal-art') : ''}<h3>大会に出場しますか？</h3><p>出場すると準備内容は変更できません。</p>
+    return `<div class="modal"><div class="sheet">${s ? artFrame(heroStage(s), 'contest', 'modal-art') : ''}<h3>大会に出場しますか？</h3><div class="lineup">${RIVALS.map((r) => rivalFace(r.id)).join('')}<span>ほか5名と競う</span></div><p>出場すると準備内容は変更できません。</p>
       <button class="primary big gold" data-act="confirm-compete">出場する</button><button class="ghost" data-act="close-modal">準備に戻る</button></div></div>`;
+  }
+  if (ui.modal === 'rival') {
+    const r = RIVALS.find((x) => x.id === ui.rival);
+    if (!r) return '';
+    const pics = (['contest', 'sheet-front', 'sheet-back', 'sheet-side'] as RivalUse[]).map((u) => rivalArt(r.id, u)).filter(Boolean) as string[];
+    const top = (Object.keys(r.dev) as (keyof typeof r.dev)[]).sort((a, b) => r.dev[b] - r.dev[a]);
+    return `<div class="modal"><div class="sheet rival-sheet">
+      ${rivalArt(r.id, 'portrait') ? `<div class="art modal-art">${rivalFace(r.id, '')}</div>` : ''}
+      <h3>${esc(r.name)}</h3><p class="meta">${r.age}歳・${r.heightCm}cm・${FRAME_INFO[r.frame][0]}</p>
+      <p>${esc(r.style)}</p>
+      <div class="kv"><span>得意な部位</span><b>${PART_LABEL[top[0]]}・${PART_LABEL[top[1]]}</b></div>
+      <div class="kv"><span>弱い部位</span><b>${PART_LABEL[top[top.length - 1]]}</b></div>
+      ${pics.length ? `<details class="sheets"><summary>大会のポーズと体の資料</summary><div class="rv-pics">${pics.map((u) => `<img src="${u}" alt="" loading="lazy">`).join('')}</div></details>` : ''}
+      <button class="ghost" data-act="close-modal">閉じる</button></div></div>`;
   }
   return '';
 }
@@ -594,6 +630,7 @@ root.addEventListener('click', (e) => {
     }
     case 'pose': ui.pose = v as PoseId; if (s) void getViewer().setBody(bodyParams(s, ui.pose)); document.querySelectorAll('.pose-row .chip').forEach((c) => c.classList.toggle('on', (c as HTMLElement).dataset.v === v)); return;
     case 'frame': getViewer().frame(v as 'full'); return;
+    case 'rival': ui.rival = v; ui.modal = 'rival'; render(); return;
   }
   if (!s) return;
   switch (act) {
