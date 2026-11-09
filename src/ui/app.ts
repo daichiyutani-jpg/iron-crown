@@ -6,7 +6,7 @@ import {
   type CaloriePlan, type MacroPlan, type ScoreKey, type Volume,
 } from '../game/data';
 import {
-  actionLabel, actionStamina, advanceWeek, bodyStats, buyItem, buyTrunks, canAddAction, canUseExercise, categoryOf, GROWTH_LABEL, newGame, rollPlayer,
+  actionStamina, advanceWeek, bodyStats, buyItem, buyTrunks, canAddAction, canUseExercise, categoryOf, GROWTH_LABEL, newGame, rollPlayer,
   nutrition, planStamina, projectGrowth, stageFinish, staminaMax, useItem, type Action, type GameState,
 } from '../game/rules';
 import { runContest, trunksLook, trunksViolation } from '../game/scoring';
@@ -741,7 +741,6 @@ root.addEventListener('click', (e) => {
       const c = canAddAction(s, a);
       if (!c.ok) { toast(c.reason!, true); return; }
       mutate((x) => { x.plan.push(a); });
-      toast(`${shortLabel(a)} を入れた`);
       return;
     }
     case 'part': ui.part = v as Part; render(); return;
@@ -751,7 +750,6 @@ root.addEventListener('click', (e) => {
       const c = canAddAction(s, a);
       if (!c.ok) { toast(c.reason!, true); return; }
       mutate((x) => { x.plan.push(a); });
-      toast(`${actionLabel(a)} を追加`);
       return;
     }
     case 'add-other': {
@@ -759,7 +757,6 @@ root.addEventListener('click', (e) => {
       const c = canAddAction(s, a);
       if (!c.ok) { toast(c.reason!, true); return; }
       mutate((x) => { x.plan.push(a); });
-      toast(`${actionLabel(a)} を追加`);
       return;
     }
     case 'cal': mutate((x) => { x.diet.cal = v as CaloriePlan; }); return;
