@@ -1,9 +1,11 @@
 // three.js による選手の 3D 表示。メッシュ生成はワーカー、肌色・トランクスはメインスレッドで即時反映。
 import {
-  ACESFilmicToneMapping, BufferAttribute, BufferGeometry, CanvasTexture, Color, CylinderGeometry, DirectionalLight,
-  Group, HemisphereLight, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, PCFShadowMap, PerspectiveCamera,
-  PMREMGenerator, Scene, ShaderMaterial, SpotLight, SRGBColorSpace, Vector3, WebGLRenderer, CircleGeometry, BackSide, Fog,
+  AdditiveBlending, BufferAttribute, BufferGeometry, CanvasTexture, Color, ConeGeometry, CylinderGeometry,
+  DataTexture, DirectionalLight, DoubleSide, Group, HemisphereLight, Matrix4, Mesh, MeshBasicMaterial, MeshPhysicalMaterial,
+  MeshToonMaterial, NearestFilter, NoToneMapping, PCFShadowMap, PerspectiveCamera, PMREMGenerator, Quaternion, Scene, ShaderMaterial,
+  SpotLight, SRGBColorSpace, Vector3, WebGLRenderer, CircleGeometry, BackSide, Fog,
 } from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { shapeKey, type BodyParams } from './anatomy';
@@ -113,7 +115,7 @@ function trunksTexture(t: TrunksLook): { map: CanvasTexture; emissive: CanvasTex
 function makeOutlineMaterial() {
   return new ShaderMaterial({
     side: BackSide,
-    uniforms: { uWidth: { value: 0.0011 }, uColor: { value: new Color('#0b0705') } },
+    uniforms: { uWidth: { value: 0.0016 }, uColor: { value: new Color('#120a08') } },
     vertexShader: `uniform float uWidth;
 void main() {
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
@@ -125,9 +127,54 @@ void main() {
   });
 }
 
+// ---- アニメ調（セル）シェーディング ----
+// 明暗を段に分ける階調。暗部は真っ黒にせず、肌の影色として残す
+function toonGradient(steps: number[]) {
+  const d = new Uint8Array(steps.length * 4);
+  steps.forEach((v, i) => { d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = Math.round(v * 255); d[i * 4 + 3] = 255; });
+  const t = new DataTexture(d, steps.length, 1);
+  t.minFilter = t.magFilter = NearestFilter;
+  t.generateMipmaps = false;
+  t.needsUpdate = true;
+  return t;
+}
+const SKIN_GRADIENT = toonGradient([0.5, 0.78, 1.0]);
+const HAIR_GRADIENT = toonGradient([0.45, 1.0]);
+/** 主光源の向き（視点座標）。毎フレーム更新して、ハイライトの位置を光に合わせる */
+const KEY_DIR = { value: new Vector3(0.2, 0.6, 0.8) };
+
+/** セルの上に、くっきりしたハイライト・縁の光（リムライト）・筋肉の溝の線を足す */
+function toonExtras(o: { rim: string; rimAmt: number; spec: number; crease: boolean }) {
+  const rc = new Color(o.rim).toArray().map((v) => v.toFixed(3)).join(',');
+  return `
+{
+  vec3 tN = normalize(normal);
+  vec3 tV = normalize(vViewPosition);
+  float fres = 1.0 - clamp(dot(tN, tV), 0.0, 1.0);
+  float rim = smoothstep(0.6, 0.66, fres);
+  outgoingLight += vec3(${rc}) * rim * ${o.rimAmt.toFixed(2)};
+  vec3 tH = normalize(uKeyDir + tV);
+  float sp = smoothstep(0.988 - uShine * 0.02, 0.991 - uShine * 0.02, dot(tN, tH));
+  outgoingLight += vec3(1.0, 0.96, 0.88) * sp * (${o.spec.toFixed(2)} + uShine * 0.45);
+  ${o.crease ? `float crease = smoothstep(0.66, 0.5, vAo);
+  outgoingLight = mix(outgoingLight, outgoingLight * vec3(0.42, 0.3, 0.28), crease * 0.85);` : ''}
+}`;
+}
+function injectToon(sh: { uniforms: Record<string, { value: unknown }>; fragmentShader: string }, extras: string, shine: { value: number }) {
+  sh.uniforms.uKeyDir = KEY_DIR;
+  sh.uniforms.uShine = shine;
+  sh.fragmentShader = sh.fragmentShader
+    .replace('#include <common>', `#include <common>
+uniform vec3 uKeyDir;
+uniform float uShine;`)
+    .replace('#include <opaque_fragment>', `${extras}
+#include <opaque_fragment>`);
+}
+
 // 頭髪・眉・目・唇はピクセル単位で塗る（頂点色だと格子の段が見える）
-function addFaceShader(m: MeshPhysicalMaterial) {
+function addFaceShader(m: MeshToonMaterial, shine: { value: number }) {
   m.onBeforeCompile = (sh) => {
+    injectToon(sh, toonExtras({ rim: '#ffe2b8', rimAmt: 0.42, spec: 0.1, crease: true }), shine);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
 attribute vec3 aRest;
@@ -154,8 +201,17 @@ if (vRest.y > 1.55) {
   float brow = exp(-pow((p.y - 1.6745 - 0.04 * (ax - 0.03) * (ax - 0.03) * 40.0) / 0.0042, 2.0))
     * smoothstep(0.072, 0.082, p.z) * smoothstep(0.009, 0.016, ax) * smoothstep(0.054, 0.045, ax);
   diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.012, 0.008, 0.006) * shade, brow * 0.8);
-  float eye = exp(-pow((p.y - 1.6555) / 0.0042, 2.0) - pow((ax - 0.031) / 0.011, 2.0)) * smoothstep(0.062, 0.074, p.z);
-  diffuseColor.rgb *= 1.0 - eye * 0.75;
+  // アニメ調の目: 白目・黒目・上まぶたの太い線・光の点
+  float front = smoothstep(0.062, 0.074, p.z);
+  vec2 e = vec2((ax - 0.031) / 0.0135, (p.y - 1.6555 - 0.06 * (ax - 0.031)) / 0.0058);
+  float white = smoothstep(1.05, 0.9, length(e)) * front;
+  float iris = smoothstep(0.7, 0.6, length(vec2(e.x * 1.25, e.y * 0.9))) * front;
+  float lid = smoothstep(0.16, 0.0, abs(e.y - 0.78 + 0.25 * e.x * e.x)) * step(abs(e.x), 1.15) * front;
+  float glint = smoothstep(0.22, 0.12, length(vec2(e.x * 1.25 + 0.15, e.y - 0.25))) * front;
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.93, 0.91, 0.88), white * 0.95);
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.06, 0.035, 0.025), iris);
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.02, 0.012, 0.01), lid);
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0), glint);
   float lip = exp(-pow((p.y - 1.598) / 0.0035, 2.0) - pow(ax / 0.017, 2.0)) * smoothstep(0.082, 0.09, p.z);
   diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.2, 0.06, 0.045) * shade, lip * 0.45);
 }`);
@@ -212,6 +268,161 @@ ${uv}`)
   return m;
 }
 
+// 床の光の輪（中心がほんのり明るい金色、外周に細い輪）
+function glowTexture() {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 256;
+  const g = cv.getContext('2d')!;
+  const gr = g.createRadialGradient(128, 128, 6, 128, 128, 128);
+  gr.addColorStop(0, 'rgba(255,214,140,0.42)');
+  gr.addColorStop(0.55, 'rgba(232,180,90,0.16)');
+  gr.addColorStop(0.78, 'rgba(232,194,90,0.10)');
+  gr.addColorStop(0.81, 'rgba(240,200,100,0.55)');
+  gr.addColorStop(0.84, 'rgba(232,194,90,0.0)');
+  gr.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = gr;
+  g.fillRect(0, 0, 256, 256);
+  const t = new CanvasTexture(cv);
+  t.colorSpace = SRGBColorSpace;
+  return t;
+}
+
+// 背景の幕: 上下は暗い紺、選手の後ろの帯がほんのり明るい
+function backdropMaterial() {
+  return new ShaderMaterial({
+    side: BackSide,
+    vertexShader: `varying vec3 vP; void main() { vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `varying vec3 vP;
+void main() {
+  float h = clamp((vP.y + 4.0) / 8.0, 0.0, 1.0);
+  float behind = smoothstep(-1.0, -5.5, vP.z);
+  vec3 c = mix(vec3(0.02, 0.03, 0.07), vec3(0.06, 0.09, 0.2), smoothstep(0.38, 0.62, h));
+  c += vec3(0.08, 0.1, 0.22) * behind * (1.0 - smoothstep(0.0, 0.25, abs(h - 0.6)));
+  c = mix(c, vec3(0.01, 0.015, 0.035), smoothstep(0.78, 1.0, h));
+  gl_FragColor = vec4(c, 1.0);
+}`,
+  });
+}
+
+// 上から差す光の帯（下へ行くほど薄く、縁ほど薄い）
+function beamMaterial(col: string) {
+  return new ShaderMaterial({
+    transparent: true, depthWrite: false, blending: AdditiveBlending, side: DoubleSide,
+    uniforms: { uCol: { value: new Color(col) } },
+    vertexShader: `varying float vY; varying vec3 vN; varying vec3 vV;
+void main() { vY = position.y; vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `uniform vec3 uCol; varying float vY; varying vec3 vN; varying vec3 vV;
+void main() {
+  float along = smoothstep(-3.0, 3.0, vY);
+  float edge = pow(abs(dot(normalize(vN), normalize(vV))), 2.0);
+  gl_FragColor = vec4(uCol * 0.08 * along * edge, 1.0);
+}`,
+  });
+}
+
+/**
+ * アニメ調の髪（イラストと同じ、側面を短くして上を立ち上げた、とがった黒髪）。
+ * 頭皮の部分を法線方向へ押し出した「帽子」と、上と前に立つ毛束（円すい）でつくる。
+ * ポーズで頭が回っても付いてくるよう、頭の頂点から「基準姿勢→今の姿勢」の回転と移動を求めて毛束に当てる。
+ */
+function buildHair(mesh: BodyMesh, scale: number): BufferGeometry {
+  const P = mesh.positions, R = mesh.rest, N = mesh.normals;
+  const n = P.length / 3;
+  const inHair = (x: number, y: number, z: number) => {
+    const line = z > 0 ? 1.664 + (1.699 - 1.664) * Math.min(1, z / 0.07) : 1.664 + (1.6 - 1.664) * Math.min(1, -z / 0.06);
+    const ear = Math.abs(x) > 0.066 && Math.abs(z + 0.006) < 0.03 && y < 1.672;
+    return y > line + 0.001 && !ear;
+  };
+  // 帽子: 上ほど厚く（ボリューム）、横と後ろは薄く（刈り上げ）
+  const thick = (y: number) => (0.0025 + 0.016 * Math.min(1, Math.max(0, (y - 1.685) / 0.05))) * scale;
+  const ok = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = R[i * 3] / scale, y = R[i * 3 + 1] / scale, z = R[i * 3 + 2] / scale;
+    ok[i] = y > 1.58 && inHair(x, y, z) ? 1 : 0;
+  }
+  const remap = new Int32Array(n).fill(-1);
+  const cp: number[] = [], cn: number[] = [], ci: number[] = [];
+  const idx = mesh.index;
+  for (let f = 0; f < idx.length; f += 3) {
+    const a = idx[f], b = idx[f + 1], c = idx[f + 2];
+    if (!ok[a] || !ok[b] || !ok[c]) continue;
+    for (const v of [a, b, c]) {
+      if (remap[v] < 0) {
+        remap[v] = cp.length / 3;
+        const t = thick(R[v * 3 + 1] / scale);
+        cp.push(P[v * 3] + N[v * 3] * t, P[v * 3 + 1] + N[v * 3 + 1] * t, P[v * 3 + 2] + N[v * 3 + 2] * t);
+        cn.push(N[v * 3], N[v * 3 + 1], N[v * 3 + 2]);
+      }
+      ci.push(remap[v]);
+    }
+  }
+  const cap = new BufferGeometry();
+  cap.setAttribute('position', new BufferAttribute(new Float32Array(cp), 3));
+  cap.setAttribute('normal', new BufferAttribute(new Float32Array(cn), 3));
+  cap.setIndex(ci);
+
+  // 頭の向き: 頭の頂点の重心と、頭頂・額の点から座標軸をつくり、基準姿勢と今の姿勢で比べる
+  const head: number[] = [];
+  for (let i = 0; i < n; i++) if (R[i * 3 + 1] / scale > 1.6) head.push(i);
+  const cr = new Vector3(), cpp = new Vector3();
+  for (const i of head) {
+    cr.x += R[i * 3]; cr.y += R[i * 3 + 1]; cr.z += R[i * 3 + 2];
+    cpp.x += P[i * 3]; cpp.y += P[i * 3 + 1]; cpp.z += P[i * 3 + 2];
+  }
+  cr.divideScalar(head.length || 1); cpp.divideScalar(head.length || 1);
+  const nearest = (tx: number, ty: number, tz: number) => {
+    let best = head[0], bd = Infinity;
+    for (const i of head) {
+      const d = (R[i * 3] / scale - tx) ** 2 + (R[i * 3 + 1] / scale - ty) ** 2 + (R[i * 3 + 2] / scale - tz) ** 2;
+      if (d < bd) { bd = d; best = i; }
+    }
+    return best;
+  };
+  const top = nearest(0, 1.77, -0.012), fr = nearest(0, 1.664, 0.1);
+  const frame = (arr: Float32Array, c: Vector3) => {
+    const v = new Vector3(arr[top * 3], arr[top * 3 + 1], arr[top * 3 + 2]).sub(c).normalize();
+    const u = new Vector3(arr[fr * 3], arr[fr * 3 + 1], arr[fr * 3 + 2]).sub(c);
+    u.sub(v.clone().multiplyScalar(u.dot(v))).normalize();
+    const w = new Vector3().crossVectors(v, u);
+    return new Matrix4().makeBasis(w, v, u);
+  };
+  const rot = frame(P, cpp).multiply(frame(R, cr).transpose());
+  const tmp = new Vector3();
+  const toWorld = (x: number, y: number, z: number) => tmp.set(x * scale, y * scale, z * scale).sub(cr).applyMatrix4(rot).add(cpp);
+
+  // 毛束: 前と上は上へ立ち上げ、後ろは後ろ上へ流す
+  const C = [0, 1.664, -0.012], RAD = [0.079, 0.096, 0.099];
+  const tufts: [number, number, number, number][] = [
+    // [方位(度・0=正面), 仰角(度), 長さ, 太さ]
+    [0, 34, 0.068, 0.022], [-26, 32, 0.062, 0.021], [26, 32, 0.062, 0.021], [-50, 28, 0.048, 0.019], [50, 28, 0.048, 0.019],
+    [-13, 54, 0.068, 0.023], [13, 54, 0.068, 0.023], [-40, 50, 0.056, 0.021], [40, 50, 0.056, 0.021],
+    [0, 72, 0.064, 0.025], [-65, 62, 0.046, 0.02], [65, 62, 0.046, 0.02],
+    [180, 62, 0.048, 0.023], [-140, 56, 0.044, 0.021], [140, 56, 0.044, 0.021], [-100, 60, 0.042, 0.02], [100, 60, 0.042, 0.02],
+  ];
+  const up = new Vector3(0, 1, 0);
+  const parts: BufferGeometry[] = [cap.toNonIndexed()];
+  for (const [az, el, len, rad] of tufts) {
+    const a = az * Math.PI / 180, e = el * Math.PI / 180;
+    const dir = new Vector3(Math.sin(a) * Math.cos(e), Math.sin(e), Math.cos(a) * Math.cos(e));
+    const base = new Vector3(C[0] + dir.x * RAD[0] * 0.9, C[1] + dir.y * RAD[1] * 0.9, C[2] + dir.z * RAD[2] * 0.9);
+    const grow = dir.clone().lerp(up, Math.abs(az) < 60 ? 0.55 : 0.25).normalize();
+    if (Math.abs(az) > 90) grow.lerp(new Vector3(0, -0.2, -1), 0.35).normalize();
+    const cone = new ConeGeometry(rad, len, 6, 1, false);
+    cone.translate(0, len / 2, 0);
+    cone.applyQuaternion(new Quaternion().setFromUnitVectors(up, grow));
+    cone.translate(base.x, base.y, base.z);
+    const pa = cone.getAttribute('position');
+    for (let i = 0; i < pa.count; i++) {
+      const w = toWorld(pa.getX(i), pa.getY(i), pa.getZ(i));
+      pa.setXYZ(i, w.x, w.y, w.z);
+    }
+    cone.deleteAttribute('uv');
+    cone.computeVertexNormals();
+    parts.push(cone.toNonIndexed());
+  }
+  return mergeGeometries(parts)!;
+}
+
 class BodyViewer {
   private renderer: WebGLRenderer | null = null;
   private scene = new Scene();
@@ -224,7 +435,16 @@ class BodyViewer {
   private outline: Mesh | null = null;
   private outlineMat = makeOutlineMaterial();
   private trunks: Mesh | null = null;
-  private skinMat = (() => { const m = new MeshPhysicalMaterial({ vertexColors: true, roughness: 0.52, sheen: 0.25, sheenRoughness: 0.6, sheenColor: new Color('#7a2e1c') }); addFaceShader(m); return m; })();
+  private shine = { value: 0 };
+  private skinMat = (() => { const m = new MeshToonMaterial({ vertexColors: true, gradientMap: SKIN_GRADIENT }); addFaceShader(m, this.shine); return m; })();
+  private hairMat = (() => {
+    const m = new MeshToonMaterial({ color: '#1b130e', gradientMap: HAIR_GRADIENT });
+    m.onBeforeCompile = (sh) => injectToon(sh, toonExtras({ rim: '#8a7a6a', rimAmt: 0.3, spec: 0.12, crease: false }), { value: 0 });
+    return m;
+  })();
+  private hair: Mesh | null = null;
+  private hairOutline: Mesh | null = null;
+  private keyLight: SpotLight | null = null;
   private trunksMat = makeTrunksMaterial();
   private worker: Worker;
   private reqId = 0;
@@ -254,8 +474,7 @@ class BodyViewer {
   private init() {
     const r = new WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     r.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    r.toneMapping = ACESFilmicToneMapping;
-    r.toneMappingExposure = 1.05;
+    r.toneMapping = NoToneMapping; // セル調は色をそのまま出す
     r.outputColorSpace = SRGBColorSpace;
     r.shadowMap.enabled = true;
     r.shadowMap.type = PCFShadowMap;
@@ -263,22 +482,32 @@ class BodyViewer {
     const pm = new PMREMGenerator(r);
     this.scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environmentIntensity = 0.32;
-    this.scene.background = new Color('#0c0c0e');
-    this.scene.fog = new Fog('#0c0c0e', 7, 14);
+    this.scene.background = new Color('#070b18');
+    this.scene.fog = new Fog('#070b18', 8, 16);
 
-    // ステージ
-    const floor = new Mesh(new CircleGeometry(3.2, 64), new MeshStandardMaterial({ color: '#060a14', roughness: 0.55, metalness: 0.05 }));
+    // ステージ（アニメの大会会場風: 紺の背景・床の光の輪・上からの光の帯）
+    const floor = new Mesh(new CircleGeometry(3.2, 64), new MeshToonMaterial({ color: '#141d3c', gradientMap: HAIR_GRADIENT }));
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     this.scene.add(floor);
-    const back = new Mesh(new CylinderGeometry(6, 6, 8, 48, 1, true), new MeshStandardMaterial({ color: '#0b1124', roughness: 1, side: BackSide }));
+    const glow = new Mesh(new CircleGeometry(1.15, 64), new MeshBasicMaterial({ map: glowTexture(), transparent: true, depthWrite: false, blending: AdditiveBlending }));
+    glow.rotation.x = -Math.PI / 2;
+    glow.position.y = 0.003;
+    this.scene.add(glow);
+    const back = new Mesh(new CylinderGeometry(6, 6, 8, 48, 1, true), backdropMaterial());
     back.position.y = 3.5;
     this.scene.add(back);
+    for (const [x, z, tilt, col] of [[-1.5, -1.2, 0.3, '#fff0c8'], [1.5, -1.2, -0.3, '#cfe0ff'], [0, -2.2, 0, '#fff6e0']] as const) {
+      const beam = new Mesh(new ConeGeometry(0.75, 6, 32, 1, true), beamMaterial(col));
+      beam.position.set(x, 3.0, z);
+      beam.rotation.z = tilt;
+      this.scene.add(beam);
+    }
 
-    // 照明: 大会ステージ風（上からの強いキー＋左右のリム）
-    this.scene.add(new HemisphereLight('#c9ccd6', '#1a1512', 0.35));
-    const key = new SpotLight('#fff1df', 55, 0, Math.PI / 6.5, 0.55, 1.6);
-    key.position.set(0.6, 4.8, 3.2);
+    // 照明: セル調は光が多いと段がばらつくので、上からのキーと弱い補助光だけ（縁の光はシェーダーで描く）
+    this.scene.add(new HemisphereLight('#c8d2ff', '#2a1a14', 1.1));
+    const key = new SpotLight('#fff3e2', 60, 0, Math.PI / 6, 0.4, 1.5);
+    key.position.set(0.9, 4.8, 3.4);
     key.target.position.set(0, 1.0, 0);
     key.castShadow = true;
     key.shadow.mapSize.set(1536, 1536);
@@ -286,17 +515,10 @@ class BodyViewer {
     key.shadow.normalBias = 0.012;
     key.shadow.camera.near = 2; key.shadow.camera.far = 9;
     this.scene.add(key, key.target);
-    const fill = new DirectionalLight('#d9e2ff', 0.45);
+    this.keyLight = key;
+    const fill = new DirectionalLight('#d9e2ff', 0.35);
     fill.position.set(-3, 2, 4);
     this.scene.add(fill);
-    const rimL = new DirectionalLight('#ffe6c4', 1.4);
-    rimL.position.set(-3.5, 2.6, -3);
-    const rimR = new DirectionalLight('#cfd9ff', 1.1);
-    rimR.position.set(3.5, 2.4, -3);
-    this.scene.add(rimL, rimR);
-    const front = new DirectionalLight('#ffffff', 0.5);
-    front.position.set(0, 1.4, 5);
-    this.scene.add(front);
 
     this.scene.add(this.group);
     this.camera.position.set(0, 1.05, 4.5);
@@ -327,6 +549,10 @@ class BodyViewer {
       this.raf = requestAnimationFrame(loop);
       if (!this.host || !this.host.isConnected) { cancelAnimationFrame(this.raf); return; }
       this.controls!.update();
+      if (this.keyLight) {
+        this.camera.updateMatrixWorld();
+        KEY_DIR.value.copy(this.keyLight.position).sub(this.keyLight.target.position).normalize().transformDirection(this.camera.matrixWorldInverse);
+      }
       r.render(this.scene, this.camera);
     };
     loop();
@@ -452,6 +678,12 @@ class BodyViewer {
     this.trunks.receiveShadow = true;
     this.outline = new Mesh(geo, this.outlineMat);
     this.group.add(this.skin, this.trunks, this.outline);
+    if (this.hair) { this.hair.geometry.dispose(); this.group.remove(this.hair, this.hairOutline!); }
+    const hg = buildHair(mesh, scale);
+    this.hair = new Mesh(hg, this.hairMat);
+    this.hair.castShadow = true;
+    this.hairOutline = new Mesh(hg, this.outlineMat);
+    this.group.add(this.hair, this.hairOutline);
     geo.computeBoundingBox();
     this.group.position.y = -geo.boundingBox!.min.y;
     this.paintSkin();
@@ -479,13 +711,11 @@ class BodyViewer {
       a = Math.max(0, Math.min(0.97, a));
       c.copy(base).lerp(deep, a);
       const ao = mesh.ao[i];
-      c.multiplyScalar(0.25 + 0.75 * ao);
+      c.multiplyScalar(0.62 + 0.38 * ao); // 溝はセル側で線として描くので、色の陰りは弱める
       arr[i * 3] = c.r; arr[i * 3 + 1] = c.g; arr[i * 3 + 2] = c.b;
     }
     col.needsUpdate = true;
-    this.skinMat.roughness = 0.56 - L.shine * 0.3;
-    this.skinMat.clearcoat = L.shine * 0.85;
-    this.skinMat.clearcoatRoughness = 0.28 - L.shine * 0.12;
+    this.shine.value = L.shine;
   }
 
   private applyTrunksMaterial(force = false) {
