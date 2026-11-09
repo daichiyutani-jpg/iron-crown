@@ -269,8 +269,8 @@ function playerScreen(s: GameState) {
     <div class="kv"><span>筋肉の張り</span><b>${fx(b.fullness * 100, 0)}%</b></div>
     <div class="kv"><span>ポージング完成度</span><b>${fx(b.posing, 0)}</b></div>
     <div class="kv"><span>肌の色の濃さ／色ムラ</span><b>${fx(s.tan.level, 0)}／${fx(s.tan.uneven, 0)}</b></div>
-    <h3>体重の推移</h3>${sparkline(s, 'weight', '#d8d8dc')}
-    <h3>体脂肪率の推移</h3>${sparkline(s, 'bf', '#c9a54a')}
+    <h3>体重の推移</h3>${sparkline(s, 'weight', '#3b9eff')}
+    <h3>体脂肪率の推移</h3>${sparkline(s, 'bf', '#ff7a2f')}
     ${recordsBlock(s)}
     ${s.lastReport ? `<h3>先週の結果</h3><ul class="report pg-split">${s.lastReport.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : ''}
     ${advanceButton(s)}
