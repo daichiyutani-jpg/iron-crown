@@ -13,6 +13,7 @@ import { runContest, trunksLook, trunksViolation } from '../game/scoring';
 import { getState, hasSave, mutate, setState, subscribe } from '../game/store';
 import { COACH_NAME, COACH_ROLE, contestLine, introLines, resultLine, weekLine, type CoachLine } from '../game/coach';
 import { SHOW_STEPS, showHtml } from './show';
+import { bgmOn, setTrack, toggleBgm, unlockBgm, type Track } from './bgm';
 import { COMMAND_LABEL, COMMANDS, dietAdvice, fatigueAfter, fatigueLevel, planInjury, predictPlace, previewCommand, recommend, riskLevel, commandAction, type CommandId } from '../game/guide';
 import { forgetPages, paginate } from './pager';
 import { coachArt, heroArt, heroStage, playerArt, rivalArt, STAGE_LABEL, type ArtUse, type Face, type RivalUse } from './art';
@@ -92,10 +93,10 @@ function viewerBlock(s: GameState, extra = '') {
 function header(s: GameState) {
   const left = Math.max(0, WEEKS - s.week + 1);
   const wk = s.phase === 'season' ? `<small>${s.season ?? 1}年目</small> 第${s.week}週 <small>/ ${WEEKS}</small>` : s.phase === 'contestDay' ? '大会前日' : '大会終了';
-  const sub = s.phase === 'season' ? `第${s.season ?? 1}回大会まで残り${left}週` : CATEGORIES[s.player.category].name;
+  const sub = s.phase === 'season' ? `大会まで残り${left}週` : CATEGORIES[s.player.category].name;
   return `<header class="top">
-    <div class="brand">IRON<span>CROWN</span></div>
-    <div class="hstat"><b>${wk}</b><span>${sub}</span></div>
+    <div class="brand">IRON<span>CROWN</span></div>${bgmButton()}
+    <div class="hstat wk"><b>${wk}</b><span>${sub}</span></div>
     <div class="hstat"><b>${yen(s.money)}</b><span>所持金</span></div>
     <div class="hstat fat"><b class="fl-${fatigueLevel(s.body.fatigue).cls}">${fatigueLevel(s.body.fatigue).label}</b><span>疲労 ${fx(s.body.fatigue, 0)}</span>${bar(s.body.fatigue, 100, s.body.fatigue > 65 ? 'warn' : '')}</div>
   </header>`;
@@ -108,6 +109,19 @@ const NAV: [Route, string, string][] = [
   ['fitting', '日焼け・衣装', 'M8 4l4 2 4-2 4 4-3 3v9H7v-9L4 8z'],
   ['contest', '大会', 'M7 4h10v4a5 5 0 0 1-10 0zm5 9v4m-4 3h8M5 5H3v2a3 3 0 0 0 3 3m13-5h2v2a3 3 0 0 1-3 3'],
 ];
+/** BGM のオン／オフ（画面上部） */
+function bgmButton() {
+  const on = bgmOn();
+  return `<button class="bgm-btn ${on ? 'on' : 'off'}" data-act="bgm" aria-label="BGM ${on ? 'オン' : 'オフ'}">♪</button>`;
+}
+/** 今の場面の曲 */
+function trackFor(s: GameState | null): Track {
+  if (!s || ui.route === 'title' || ui.route === 'create') return 'title';
+  if (ui.show >= 0 && s.result) return 'contest';
+  if (s.phase === 'done' && s.result) return s.result.playerPlace <= PRIZE_PLACES ? 'win' : 'lose';
+  if (s.phase === 'contestDay') return 'contest';
+  return 'home';
+}
 function nav() {
   return `<nav class="bottom">${NAV.map(([r, label, d]) => `<button data-act="go" data-v="${r}" class="${ui.route === r ? 'on' : ''}">
     <svg viewBox="0 0 24 24"><path d="${d}"/></svg><span>${label}</span></button>`).join('')}</nav>`;
@@ -135,6 +149,7 @@ function titleScreen() {
     <div class="title-btns">
       ${save && s ? `<button class="primary big" data-act="continue">続きから<small>${esc(s.player.name)}・${s.phase === 'season' ? `${s.season ?? 1}年目・第${s.week}週` : s.phase === 'contestDay' ? '大会前日' : isGameOver(s) ? '引退' : '大会終了'}</small></button>` : ''}
       <button class="${save ? 'ghost' : 'primary'} big" data-act="new">新しい選手で始める</button>
+      <button class="ghost sm bgm-title" data-act="bgm">${bgmOn() ? '♪ BGM オン' : '♪ BGM オフ'}</button>
     </div>
     <p class="fine">${WEEKS}週間で体を作り、${esc(CONTEST.name)}で優勝を目指す。<br>セーブデータはこの端末のブラウザ内にだけ保存されます。</p>
   </div>`;
@@ -669,6 +684,7 @@ function render() {
     html = `${header(s)}<main class="r-${ui.route === 'contest' && s.result ? 'result' : ui.route}">${body}</main>${nav()}${modal(s)}${ui.show >= 0 && s.result ? showHtml(s, ui.show) : ''}`;
   }
   root.innerHTML = html;
+  setTrack(trackFor(s));
   // 大会のポーズの段は、少し待つと自動で次へ進む
   clearTimeout(showTimer);
   const auto = Number(root.querySelector<HTMLElement>('.show[data-auto]')?.dataset.auto ?? 0);
@@ -717,6 +733,7 @@ root.addEventListener('click', (e) => {
   const v = el.dataset.v ?? '';
   const s = getState();
   switch (act) {
+    case 'bgm': toggleBgm(); render(); return;
     case 'go': go(v as Route); return;
     case 'go-title': go('title'); return;
     case 'go-shop': ui.shopTab = v as typeof ui.shopTab; go('shop'); return;
@@ -869,6 +886,10 @@ root.addEventListener('click', (e) => {
 });
 
 export function startApp() {
+  // ブラウザは操作の前に音を出せないので、最初のタップで BGM を始める
+  const unlock = () => { unlockBgm(); };
+  document.addEventListener('pointerdown', unlock);
+  document.addEventListener('keydown', unlock);
   subscribe(() => { if (ui.route !== 'title' && ui.route !== 'create') render(); });
   render();
 }

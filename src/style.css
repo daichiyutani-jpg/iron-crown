@@ -30,7 +30,7 @@ main { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: 
 .page { padding: 14px 16px 8px; }
 
 /* ヘッダー */
-.top { display: flex; align-items: center; gap: 10px; padding: calc(8px + env(safe-area-inset-top)) 12px 8px; background: #0a1020; border-bottom: 1px solid var(--line); }
+.top { display: flex; align-items: center; gap: 8px; padding: calc(8px + env(safe-area-inset-top)) 12px 8px; background: #0a1020; border-bottom: 1px solid var(--line); }
 .brand { font-weight: 800; letter-spacing: 0.12em; font-size: 13px; line-height: 1.05; width: 52px; }
 .brand span { display: block; color: var(--gold); }
 .hstat { flex: 1; display: flex; flex-direction: column; min-width: 0; }
@@ -38,6 +38,9 @@ main { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: 
 .hstat b small { color: var(--sub); font-weight: 500; }
 .hstat span { font-size: 10.5px; color: var(--sub); white-space: nowrap; }
 .hstat.fat { flex: 0.7; }
+.top .hstat.wk { flex: 1.35; }
+.top .hstat.wk b { font-size: 14px; letter-spacing: -.01em; }
+.top .hstat.wk b small { font-size: 11px; }
 .hstat .bar { margin-top: 3px; height: 3px; }
 
 /* 下部ナビ */
@@ -526,3 +529,9 @@ main > .page.paged { flex: 1; padding: 10px 16px 8px; }
 .diet-adv { border-left: 3px solid var(--gold); background: rgba(201,165,74,.1); border-radius: 0 8px 8px 0; padding: 8px 10px; margin: 4px 0 8px; display: flex; flex-direction: column; gap: 4px; }
 .diet-adv b { color: var(--gold); font-size: 13.5px; } .diet-adv span { font-size: 12px; color: #c9c9cf; }
 .diet-adv em { font-style: normal; font-size: 11.5px; color: #8fd19e; } .diet-adv .primary { align-self: flex-start; }
+
+/* ---- BGM ---- */
+.bgm-btn { flex: none; width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line); background: transparent; color: var(--gold); font-size: 14px; line-height: 1; padding: 0; margin-left: -6px; }
+.bgm-btn.off { color: #5d6684; position: relative; }
+.bgm-btn.off::after { content: ''; position: absolute; left: 4px; right: 4px; top: 50%; height: 1.5px; background: #8b95b3; transform: rotate(-45deg); }
+.bgm-title { align-self: center; margin-top: 4px; }
