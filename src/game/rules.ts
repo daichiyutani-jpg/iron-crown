@@ -13,12 +13,25 @@ export type Action =
   | { kind: 'rest' }
   | { kind: 'work' };
 
+/** 顔（絵は public/art/hero/<顔>-s<段階>-<用途>.webp） */
+export type Face = 'a' | 'b' | 'c';
+/** 成長タイプ: 早熟は前半に伸びて後半は鈍る、晩成はその逆 */
+export type GrowthType = 'early' | 'normal' | 'late';
+
 export interface PlayerInfo {
   name: string;
   heightCm: number;
   frame: Frame;
   category: Category;
   skinTone: number;
+  face?: Face;
+  growth?: GrowthType;
+  /** 伸びやすい部位（発達 ×1.2） */
+  strong?: Part;
+  /** 才能（発達の倍率 0.9〜1.12） */
+  talent?: number;
+  /** 始めの能力（無ければ体格から決める） */
+  start?: { dev: Record<Part, number>; bf: number; posing: number; imbalance: number };
 }
 
 export interface BodyState {
@@ -208,7 +221,7 @@ export function projectGrowth(s: GameState, plan: Action[] = s.plan): Record<Par
   const st = stimulusByPart(plan);
   const { bf } = bodyStats(s);
   const out = {} as Record<Part, number>;
-  const frameG = s.player.frame === 'endo' ? 1.05 : s.player.frame === 'ecto' ? 0.95 : 1;
+  const frameG = (s.player.frame === 'endo' ? 1.05 : s.player.frame === 'ecto' ? 0.95 : 1) * growthRate(s.player, s.week);
   for (const p of PARTS) {
     const stim = st[p];
     const sat = 1 - Math.exp(-stim / 10);
@@ -217,7 +230,7 @@ export function projectGrowth(s: GameState, plan: Action[] = s.plan): Record<Par
     if (bf < 6) nutr *= 0.75;
     const recov = 1 - s.body.fatigue / 160;
     const eff = 1 - Math.max(0, s.body.partFatigue[p] - 55) / 90;
-    let g = 2.6 * sat * pot * nutr * recov * eff * frameG;
+    let g = 2.6 * sat * pot * nutr * recov * eff * frameG * (s.player.strong === p ? 1.2 : 1);
     if (stim > 26) g *= Math.max(0.3, 1 - (stim - 26) / 40);
     let atrophy = CAL_ATROPHY[s.diet.cal] * (1 - 0.85 * sat) * PROT_ATROPHY[s.diet.macro];
     if (bf < 5) atrophy += 0.15;
@@ -227,21 +240,59 @@ export function projectGrowth(s: GameState, plan: Action[] = s.plan): Record<Par
   return out;
 }
 
+/** 成長タイプと才能による、その週の発達の倍率（12週の平均はおよそ才能の値） */
+export function growthRate(p: PlayerInfo, week: number): number {
+  const w = clamp(week, 1, 12);
+  const curve = p.growth === 'early' ? 1.28 - 0.05 * (w - 1) : p.growth === 'late' ? 0.72 + 0.05 * (w - 1) : 1;
+  return curve * (p.talent ?? 1);
+}
+
+export const GROWTH_LABEL: Record<GrowthType, [string, string]> = {
+  early: ['早熟型', '前半によく伸び、後半は伸びが鈍る'],
+  normal: ['普通型', '12週を通して同じように伸びる'],
+  late: ['晩成型', '前半は伸びが遅く、後半に大きく伸びる'],
+};
+
+/** 体格・身長・部門・能力・成長タイプをランダムに決める（顔と名前は選手が選ぶ） */
+export function rollPlayer(seed: number): Omit<PlayerInfo, 'name' | 'face' | 'skinTone'> {
+  let t = seed | 0;
+  const r = () => {
+    t = (t + 0x6d2b79f5) | 0;
+    let x = Math.imul(t ^ (t >>> 15), t | 1);
+    x ^= x + Math.imul(x ^ (x >>> 7), x | 61);
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+  const pick = <T,>(a: readonly T[]) => a[Math.floor(r() * a.length)];
+  const frame = pick(['ecto', 'meso', 'meso', 'endo'] as const);
+  const heightCm = Math.round(165 + r() * 20);
+  const category: Category = r() < 0.65 ? 'bodybuilding' : 'classic';
+  const growth = pick(['early', 'normal', 'normal', 'late'] as const);
+  const strong = pick(PARTS);
+  const talent = Math.round((0.9 + r() * 0.22) * 100) / 100;
+  const base = frame === 'ecto' ? 43 : frame === 'endo' ? 46 : 45;
+  const shape: Record<Part, number> = { chest: 2, back: 0, shoulders: -1, arms: 2, legs: -3, abs: -2 };
+  const dev = Object.fromEntries(PARTS.map((p) => [p, Math.round((base + shape[p] + (r() - 0.5) * 6 + (p === strong ? 1.5 : 0)) * 10) / 10])) as Record<Part, number>;
+  const bf = Math.round(((frame === 'endo' ? 14 : frame === 'ecto' ? 11.5 : 13) + (r() - 0.5) * 3) * 10) / 10;
+  const posing = Math.round(22 + r() * 18);
+  const imbalance = Math.round((1.5 + r() * 3.5) * 10) / 10;
+  return { heightCm, frame, category, growth, strong, talent, start: { dev, bf, posing, imbalance } };
+}
+
 // ---- 新しいゲーム ----
 export function newGame(info: PlayerInfo, seed = Date.now()): GameState {
   const base = info.frame === 'ecto' ? 43 : info.frame === 'endo' ? 46 : 45;
-  const dev: Record<Part, number> = {
+  const dev: Record<Part, number> = info.start ? { ...info.start.dev } : {
     chest: base + 2, back: base, shoulders: base - 1, arms: base + 2, legs: base - 3, abs: base - 2,
   };
   const lean = leanMass(dev, info.heightCm, info.frame);
-  const bf0 = info.frame === 'endo' ? 15 : info.frame === 'ecto' ? 11.5 : 13;
+  const bf0 = info.start?.bf ?? (info.frame === 'endo' ? 15 : info.frame === 'ecto' ? 11.5 : 13);
   const fat = (lean * bf0) / (100 - bf0);
   const s: GameState = {
     v: 1, player: info, week: 1, money: START_MONEY - CONTEST.entryFee,
     body: {
-      dev, imbalance: 3.5, fat, fullness: 0.9, condition: 80, fatigue: 15,
+      dev, imbalance: info.start?.imbalance ?? 3.5, fat, fullness: 0.9, condition: 80, fatigue: 15,
       partFatigue: Object.fromEntries(PARTS.map((p) => [p, 10])) as Record<Part, number>,
-      injury: null, posing: 30, adapt: 0,
+      injury: null, posing: info.start?.posing ?? 30, adapt: 0,
     },
     diet: { cal: 'cutMild', macro: 'balanced' },
     plan: [

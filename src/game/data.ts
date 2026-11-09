@@ -214,3 +214,10 @@ export const START_MONEY = 60000;
 export const WEEKLY_INCOME = 15000;
 export const EXTRA_SHIFT_PAY = 12000;
 export const BASE_FOOD_COST = 9000;
+
+/** 主人公の顔（選手登録で選ぶ。絵は public/art/hero/<id>-s<段階>-<用途>.webp） */
+export const FACES = [
+  { id: 'a', label: '熱血', name: '鷹野 蓮', desc: 'まっすぐな熱血漢。刈り上げの黒髪', skinTone: 1 },
+  { id: 'b', label: '元気', name: '日向 大翔', desc: '明るいムードメーカー。白いヘアバンド', skinTone: 0 },
+  { id: 'c', label: 'クール', name: '氷室 迅', desc: '寡黙なストイック派。後ろで結んだ長めの黒髪', skinTone: 2 },
+] as const;

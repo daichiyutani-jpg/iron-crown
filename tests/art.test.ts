@@ -6,22 +6,20 @@ import { heroArt, heroStage, rivalArt } from '../src/ui/art';
 import { HERO_ART } from '../src/ui/artList';
 
 describe('主人公のイラスト', () => {
-  test('始めは初期、絞ると中期・大会レベル、増量で筋肉が増えても中期', () => {
+  test('始めは段階1〜2、絞ると上がり、増量で筋肉が増えても上がる', () => {
     const s = newGame({ name: 't', heightCm: 175, frame: 'meso', category: 'bodybuilding', skinTone: 1 }, 1);
-    expect(heroStage(s)).toBe('early');
-    s.body.fat *= 0.75;
-    expect(heroStage(s)).toBe('mid');
-    s.body.fat *= 0.6;
-    expect(heroStage(s)).toBe('contest');
+    expect(heroStage(s)).toBeLessThanOrEqual(2);
+    s.body.fat *= 0.5;
+    expect(heroStage(s)).toBeGreaterThanOrEqual(3);
     const b = newGame({ name: 't', heightCm: 175, frame: 'meso', category: 'bodybuilding', skinTone: 1 }, 1);
-    for (const p of PARTS) b.body.dev[p] = 50;
-    expect(heroStage(b)).toBe('mid');
+    for (const p of PARTS) b.body.dev[p] = 54;
+    expect(heroStage(b)).toBeGreaterThanOrEqual(3);
   });
-  test('一覧にある絵は3段階とも用途がそろっている', () => {
-    for (const st of ['early', 'mid', 'contest'] as const)
-      for (const u of ['portrait', 'training'] as const) expect(heroArt(st, u)).toMatch(new RegExp(`art/hero/${st}-${u}\.webp$`));
-    expect(heroArt('early', 'win')).toMatch(/contest-win\.webp$/); // 無い段階は近い段階で代用
-    expect(HERO_ART.length).toBeGreaterThanOrEqual(17);
+  test('絵の名前は 顔-s段階-用途、無い段階は近い段階で代用', () => {
+    expect(heroArt('a', 1, 'portrait')).toMatch(/art\/hero\/a-s1-portrait\.webp$/);
+    expect(heroArt('a', 5, 'win')).toMatch(/a-s5-win\.webp$/);
+    expect(heroArt('a', 1, 'win')).toMatch(/a-s5-win\.webp$/);
+    expect(HERO_ART.every((k) => /^[abc]-s[1-5]-(portrait|training|pose|win|sheet-front|sheet-back|sheet-side)$/.test(k))).toBe(true);
   });
 });
 

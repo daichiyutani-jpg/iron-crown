@@ -3,7 +3,7 @@
 import { CATEGORIES, CONTEST, RIVALS } from '../game/data';
 import type { GameState } from '../game/rules';
 import type { CompetitorScore } from '../game/scoring';
-import { heroArt, heroStage, rivalArt, venueArt } from './art';
+import { playerArt, rivalArt, venueArt } from './art';
 
 const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
@@ -11,7 +11,7 @@ const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 export const SHOW_STEPS = 9;
 
 function artOf(s: GameState, c: CompetitorScore, win = false): string | null {
-  if (c.isPlayer) return heroArt(heroStage(s), win ? 'win' : 'contest');
+  if (c.isPlayer) return playerArt(s, win ? 'win' : 'pose');
   const r = RIVALS.find((x) => x.name === c.name);
   return r ? rivalArt(r.id, 'contest') : null;
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { advanceWeek, bodyStats, buyItem, buyTrunks, canAddAction, newGame, useItem, type Action, type GameState } from '../src/game/rules';
+import { advanceWeek, bodyStats, buyItem, buyTrunks, canAddAction, growthRate, newGame, rollPlayer, useItem, type Action, type GameState, type PlayerInfo } from '../src/game/rules';
+import { heroStage, shapeScore } from '../src/ui/art';
 import { runContest } from '../src/game/scoring';
 import type { Category } from '../src/game/data';
 
@@ -8,11 +9,13 @@ function setPlan(s: GameState, plan: Action[]) {
   for (const a of plan) if (canAddAction(s, a).ok) s.plan.push(a);
 }
 
-function playGood(cat: Category, seed: number) {
-  let s = newGame({ name: 'テスト', heightCm: 175, frame: 'meso', category: cat, skinTone: 1 }, seed);
+function playGood(cat: Category, seed: number, info?: PlayerInfo, onWeek?: (s: GameState) => void) {
+  let s = newGame(info ?? { name: 'テスト', heightCm: 175, frame: 'meso', category: cat, skinTone: 1 }, seed);
   buyItem(s, 'gymPass');
   for (let w = 1; w <= 12; w++) {
-    s.diet = { cal: w <= 10 ? 'cut' : 'cutMild', macro: w <= 10 ? 'highProtein' : 'highCarb' };
+    // 体脂肪が予定より多い時は強めに絞る（体脂肪が多めの選手は減量を強める）
+    const behind = bodyStats(s).bf > 14 - w * 0.75;
+    s.diet = { cal: w <= 10 ? (behind ? 'cutHard' : 'cut') : 'cutMild', macro: w <= 10 ? 'highProtein' : 'highCarb' };
     if (s.gymWeeks === 0 && s.money > 20000) buyItem(s, 'gymPass');
     setPlan(s, [
       { kind: 'train', ex: 'bench', vol: 'normal' },
@@ -28,6 +31,7 @@ function playGood(cat: Category, seed: number) {
       if (s.money > 10000) { buyItem(s, 'tanPro'); useItem(s, 'tanPro'); }
     }
     s = advanceWeek(s);
+    onWeek?.(s);
   }
   if (cat === 'classic') { buyTrunks(s, 'classicMatte:black', 6000); s.trunksEquipped = 'classicMatte:black'; }
   if (s.money >= 12000) { buyItem(s, 'compColor'); s.prep.color = true; }
@@ -100,5 +104,50 @@ describe('ショップ・所持金', () => {
     expect(useItem(s, 'tanBasic').ok).toBe(true);
     expect(s.tan.level).toBeGreaterThan(l0 + 10);
     expect(useItem(s, 'tanBasic').ok).toBe(false);
+  });
+});
+
+describe('ランダムな選手', () => {
+  it('能力は決まった範囲に入り、同じ種なら同じ結果', () => {
+    for (let seed = 1; seed <= 200; seed++) {
+      const r = rollPlayer(seed);
+      expect(r.heightCm).toBeGreaterThanOrEqual(165);
+      expect(r.heightCm).toBeLessThanOrEqual(185);
+      expect(r.talent!).toBeGreaterThanOrEqual(0.9);
+      expect(r.talent!).toBeLessThanOrEqual(1.12);
+      for (const v of Object.values(r.start!.dev)) { expect(v).toBeGreaterThan(36); expect(v).toBeLessThan(54); }
+    }
+    expect(rollPlayer(42)).toEqual(rollPlayer(42));
+  });
+  it('早熟は前半、晩成は後半に伸び、12週の平均はほぼ同じ', () => {
+    const avg = (g: 'early' | 'late') => Array.from({ length: 12 }, (_, i) => growthRate({ name: '', heightCm: 175, frame: 'meso', category: 'bodybuilding', skinTone: 1, growth: g }, i + 1)).reduce((a, b) => a + b) / 12;
+    const at = (g: 'early' | 'late', w: number) => growthRate({ name: '', heightCm: 175, frame: 'meso', category: 'bodybuilding', skinTone: 1, growth: g }, w);
+    expect(at('early', 1)).toBeGreaterThan(at('late', 1));
+    expect(at('late', 12)).toBeGreaterThan(at('early', 12));
+    expect(Math.abs(avg('early') - avg('late'))).toBeLessThan(0.02);
+  });
+  it('計画的に準備すれば、どの選手でもおおむね上位に入れる', () => {
+    const places: number[] = [];
+    for (let seed = 1; seed <= 16; seed++) {
+      const r = rollPlayer(seed * 977);
+      const { r: res } = playGood(r.category, seed, { ...r, name: 't', skinTone: 1, face: 'a' });
+      places.push(res.playerPlace);
+      const me = res.ranking.find((c) => c.isPlayer)!; console.log('roll', r.category, r.frame, r.heightCm, r.talent, r.growth, 'bf0', r.start!.bf, 'bf', me.bodyFat.toFixed(1), 'w', me.weight.toFixed(1), 'place', res.playerPlace, Object.entries(me.scores).map(([k, v]) => k + v.toFixed(0)).join(' '));
+    }
+    console.log('rolled places', places.join(','));
+    expect(places.reduce((a, b) => a + b, 0) / places.length).toBeLessThanOrEqual(3);
+  });
+  it('育てると見た目の段階が1から5へ上がり、放置では上がらない', () => {
+    for (const seed of [1, 2, 3]) {
+      const stages: number[] = []; const scores: string[] = [];
+      let s0: GameState | null = null;
+      playGood('bodybuilding', seed, undefined, (s) => { s0 ??= s; stages.push(heroStage(s)); scores.push(shapeScore(s).toFixed(1)); });
+      console.log('stages', seed, stages.join(''), scores.join(' '));
+      expect(stages[stages.length - 1]).toBe(5);
+      expect(new Set(stages).size).toBeGreaterThanOrEqual(4);
+    }
+    const lazy = playLazy('bodybuilding', 3).s;
+    console.log('lazy score', shapeScore(lazy).toFixed(1));
+    expect(heroStage(lazy)).toBeLessThanOrEqual(2);
   });
 });

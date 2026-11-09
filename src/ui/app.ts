@@ -1,12 +1,12 @@
 // 画面とナビゲーション。状態は store.ts、計算は rules.ts / scoring.ts に集約し、ここは表示と操作だけを担う。
 import { PARTS, type Frame, type Part } from '../game/body';
 import {
-  CALORIE_PLANS, CATEGORIES, CONTEST, DESIGN_LABEL, EQUIP_LABEL, EXERCISES, GRADE_LABEL, ITEMS, MACRO_PLANS, MATERIAL_LABEL,
+  CALORIE_PLANS, CATEGORIES, CONTEST, DESIGN_LABEL, EQUIP_LABEL, EXERCISES, FACES, GRADE_LABEL, ITEMS, MACRO_PLANS, MATERIAL_LABEL,
   PART_LABEL, RIVALS, SCORE_LABEL, SLOTS, TRUNKS, VOLUME, WEEKS,
-  type CaloriePlan, type Category, type MacroPlan, type ScoreKey, type Volume,
+  type CaloriePlan, type MacroPlan, type ScoreKey, type Volume,
 } from '../game/data';
 import {
-  actionLabel, actionStamina, advanceWeek, bodyStats, buyItem, buyTrunks, canAddAction, canUseExercise, categoryOf, newGame,
+  actionLabel, actionStamina, advanceWeek, bodyStats, buyItem, buyTrunks, canAddAction, canUseExercise, categoryOf, GROWTH_LABEL, newGame, rollPlayer,
   nutrition, planStamina, projectGrowth, stageFinish, staminaMax, stimulusByPart, useItem, type Action, type GameState,
 } from '../game/rules';
 import { runContest, trunksLook, trunksViolation } from '../game/scoring';
@@ -14,8 +14,9 @@ import { getState, hasSave, mutate, setState, subscribe } from '../game/store';
 import { COACH_NAME, COACH_ROLE, contestLine, introLines, resultLine, weekLine, type CoachLine } from '../game/coach';
 import { SHOW_STEPS, showHtml } from './show';
 import { forgetPages, paginate } from './pager';
-import { coachArt, heroArt, heroStage, rivalArt, STAGE_LABEL, type ArtUse, type RivalUse, type Stage } from './art';
+import { coachArt, heroArt, heroStage, playerArt, rivalArt, STAGE_LABEL, type ArtUse, type Face, type RivalUse } from './art';
 
+const REROLLS = 3; // 能力の引き直しの回数
 type Route = 'title' | 'create' | 'player' | 'training' | 'diet' | 'shop' | 'fitting' | 'contest' | 'result';
 const ui = {
   route: 'title' as Route,
@@ -29,10 +30,14 @@ const ui = {
   rival: '',
   introStep: 0,
   show: -1, // 大会演出の段（-1 = 出していない）
-  create: { name: '', heightCm: 175, frame: 'meso' as Frame, category: 'bodybuilding' as Category, skinTone: 1 },
+  create: { name: '', face: 'a' as Face, roll: rollPlayer(Date.now()), rerolls: REROLLS },
 };
 
 const root = document.getElementById('app')!;
+/** 選手登録をやり直す（能力を引き直し、引き直しの回数も戻す） */
+function newCreate() {
+  ui.create = { name: '', face: ui.create.face, roll: rollPlayer(Date.now()), rerolls: REROLLS };
+}
 const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const yen = (n: number) => `¥${Math.round(n).toLocaleString('ja-JP')}`;
 const fx = (n: number, d = 1) => n.toFixed(d);
@@ -40,8 +45,8 @@ const sgn = (n: number, d = 1) => `${n >= 0 ? '+' : ''}${n.toFixed(d)}`;
 const bar = (v: number, max = 100, cls = '') => `<div class="bar ${cls}"><i style="width:${Math.max(0, Math.min(100, (v / max) * 100))}%"></i></div>`;
 
 // 2D イラストの枠（絵が無い時は何も出さない）
-function artFrame(stage: Stage, use: ArtUse, cls: string, overlay = '') {
-  const url = heroArt(stage, use);
+function artFrame(s: GameState, use: ArtUse, cls: string, overlay = '') {
+  const url = playerArt(s, use);
   if (!url) return overlay ? `<div class="art ${cls} noimg">${overlay}</div>` : '';
   return `<div class="art ${cls}"><img src="${url}" alt="" decoding="async">${overlay}</div>`;
 }
@@ -73,10 +78,10 @@ function toast(msg: string, bad = false) {
 }
 
 // ---- 選手の絵（2D）。育成段階ごとのイラストを向き別に見せる ----
-const VIEWS: [ArtUse, string][] = [['sheet-front', '正面'], ['sheet-back', '背面'], ['sheet-side', '側面'], ['contest', 'ポーズ']];
+const VIEWS: [ArtUse, string][] = [['sheet-front', '正面'], ['sheet-back', '背面'], ['sheet-side', '側面'], ['pose', 'ポーズ']];
 function viewerBlock(s: GameState, extra = '') {
   const stage = heroStage(s);
-  const url = heroArt(stage, ui.view);
+  const url = playerArt(s, ui.view, stage);
   const tk = ui.route === 'fitting' ? ui.preview ?? s.trunksEquipped : s.trunksEquipped;
   const t = trunksLook(tk);
   return `<div class="viewer-wrap">
@@ -125,7 +130,7 @@ function advanceButton(s: GameState) {
 function titleScreen() {
   const save = hasSave();
   const s = getState();
-  const art = heroArt('contest', 'contest');
+  const art = heroArt('a', 5, 'pose');
   return `<div class="title">
     ${art ? `<div class="title-art"><img src="${art}" alt=""></div>` : ''}
     <div class="title-mark">
@@ -147,24 +152,30 @@ const FRAME_INFO: Record<Frame, [string, string]> = {
 };
 function createScreen() {
   const c = ui.create;
+  const r = c.roll;
+  const face = FACES.find((f) => f.id === c.face)!;
+  const cat = CATEGORIES[r.category];
+  const stars = Math.max(1, Math.min(5, Math.round(((r.talent ?? 1) - 0.9) / 0.22 * 4) + 1));
+  const st = r.start!;
   return `<div class="page create">
     <h2>選手の登録</h2>
-    <label class="field">選手名<input id="pname" maxlength="12" value="${esc(c.name)}" placeholder="例：鷹野 蓮"></label>
-    <div class="field">身長
-      <div class="seg">${[165, 170, 175, 180, 185].map((h) => `<button class="${c.heightCm === h ? 'on' : ''}" data-act="c-height" data-v="${h}">${h}cm</button>`).join('')}</div>
+    <h3>顔を選ぶ</h3>
+    <div class="faces">${FACES.map((f) => { const u = heroArt(f.id, 1, 'portrait'); return `<button class="face ${c.face === f.id ? 'on' : ''}" data-act="c-face" data-v="${f.id}">${u ? `<div class="art"><img src="${u}" alt="" decoding="async"></div>` : ''}<b>${f.label}</b></button>`; }).join('')}</div>
+    <p class="face-desc">${face.desc}</p>
+    <label class="field">選手名<input id="pname" maxlength="12" value="${esc(c.name)}" placeholder="${face.name}"></label>
+    <div class="roll-h"><h3>能力（ランダム）</h3><button class="ghost sm" data-act="c-reroll" ${c.rerolls > 0 ? '' : 'disabled'}>引き直す（残り${c.rerolls}回）</button></div>
+    <div class="roll">
+      <div><span>身長</span><b>${r.heightCm}cm</b></div>
+      <div><span>体格</span><b>${FRAME_INFO[r.frame][0].replace(/（.*）/, '')}</b></div>
+      <div><span>出場部門</span><b>${cat.short}</b></div>
+      <div><span>才能</span><b class="stars">${'★'.repeat(stars)}<i>${'★'.repeat(5 - stars)}</i></b></div>
+      <div><span>成長タイプ</span><b>${GROWTH_LABEL[r.growth ?? 'normal'][0]}</b></div>
+      <div><span>伸びやすい部位</span><b>${PART_LABEL[r.strong ?? 'chest']}</b></div>
+      <div><span>体脂肪率</span><b>${fx(st.bf)}%</b></div>
+      <div><span>ポージング</span><b>${st.posing}</b></div>
     </div>
-    <div class="field">体格タイプ
-      ${(['ecto', 'meso', 'endo'] as Frame[]).map((f) => `<button class="card-opt ${c.frame === f ? 'on' : ''}" data-act="c-frame" data-v="${f}"><b>${FRAME_INFO[f][0]}</b><span>${FRAME_INFO[f][1]}</span></button>`).join('')}
-    </div>
-    <div class="field">出場カテゴリー
-      ${(['bodybuilding', 'classic'] as Category[]).map((k) => {
-        const r = CATEGORIES[k];
-        return `<button class="card-opt ${c.category === k ? 'on' : ''}" data-act="c-cat" data-v="${k}"><b>${r.name}</b><span>${r.desc}${r.weightCap ? `（${c.heightCm}cm の上限 ${r.weightCap(c.heightCm)}kg）` : ''}／衣装：${r.cut === 'classic' ? 'クラシックカット' : '標準カット'}</span></button>`;
-      }).join('')}
-    </div>
-    <div class="field">肌の色（地の色）
-      <div class="seg skin">${['#e8bfa0', '#cf9a76', '#9c6a4a'].map((col, i) => `<button class="${c.skinTone === i ? 'on' : ''}" data-act="c-skin" data-v="${i}"><i style="background:${col}"></i>${['明るめ', '標準', '濃いめ'][i]}</button>`).join('')}</div>
-    </div>
+    <p class="hint">${GROWTH_LABEL[r.growth ?? 'normal'][1]}。${FRAME_INFO[r.frame][1]}${r.category === 'classic' ? ' クラシック部門はクラシックカットの衣装が必要（ショップで購入）。' : ''}</p>
+    <div class="parts pg-split">${PARTS.map((p) => `<div class="prow"><span>${PART_LABEL[p]}</span>${bar(st.dev[p])}<b>${fx(st.dev[p])}</b></div>`).join('')}</div>
     <div class="pg-pin pin-row"><button class="ghost" data-act="go-title">戻る</button><button class="primary big" data-act="start">この選手で始める</button></div>
   </div>`;
 }
@@ -189,7 +200,7 @@ function playerScreen(s: GameState) {
   return `${viewerBlock(s)}
   <div class="page">
     <div class="pcard">
-      ${artFrame(heroStage(s), 'portrait', 'pc-art')}
+      ${artFrame(s, 'portrait', 'pc-art')}
       <div class="pc-info">
         <div class="name-row"><h2>${esc(s.player.name)}</h2><span class="tag">${cat.name}</span></div>
         <p class="meta">${s.player.heightCm}cm・${frameName}</p>
@@ -456,7 +467,7 @@ function resultScreen(s: GameState) {
   const other = r.ranking.find((c) => c.name === r.compareWith)!;
   const keys = Object.keys(SCORE_LABEL) as ScoreKey[];
   return `<div class="page">
-    ${artFrame(heroStage(s), r.playerPlace === 1 ? 'win' : 'contest', 'result-art', r.playerPlace === 1 ? '<div class="burst win">優勝!!</div>' : '')}
+    ${artFrame(s, r.playerPlace === 1 ? 'win' : 'pose', 'result-art', r.playerPlace === 1 ? '<div class="burst win">優勝!!</div>' : '')}
     <div class="place"><span>${CATEGORIES[r.category].name}</span><b>${r.playerPlace}<small>位</small></b><em>${r.playerPlace === 1 ? '優勝 ─ IRON CROWN 獲得' : `${r.ranking.length}名中`}</em>${r.prize ? `<strong>賞金 ${yen(r.prize)}</strong>` : ''}</div>
     ${coachBox(resultLine(s))}
     <button class="ghost replay" data-act="show-replay">▶ 大会の様子をもう一度見る</button>
@@ -485,7 +496,7 @@ function modal(s: GameState | null) {
     const gain = PARTS.reduce((a, p) => a + Math.max(0, r.devDelta[p]), 0);
     const top = [...PARTS].sort((a, b) => r.devDelta[b] - r.devDelta[a]).slice(0, 4).filter((p) => r.devDelta[p] > 0);
     return `<div class="modal"><div class="sheet report-sheet">
-      ${artFrame(heroStage(s), 'training', 'rep-art', `<div class="rep-gains">${top.map((p, i) => `<div class="gain" style="--d:${0.15 + i * 0.12}s"><span>${PART_LABEL[p]}</span><b data-count="${r.devDelta[p].toFixed(2)}">+0.00</b></div>`).join('')}</div>${gain > 0.4 ? '<div class="burst">成長!!</div>' : ''}`)}
+      ${artFrame(s, 'training', 'rep-art', `<div class="rep-gains">${top.map((p, i) => `<div class="gain" style="--d:${0.15 + i * 0.12}s"><span>${PART_LABEL[p]}</span><b data-count="${r.devDelta[p].toFixed(2)}">+0.00</b></div>`).join('')}</div>${gain > 0.4 ? '<div class="burst">成長!!</div>' : ''}`)}
       <h3>第${r.week}週の結果</h3>
       ${coachBox(weekLine(s))}
       <div class="rep-nums"><div><span>体重</span><b>${fx(r.weightAfter)}kg</b><em>${sgn(r.weightAfter - r.weightBefore)}</em></div>
@@ -501,7 +512,7 @@ function modal(s: GameState | null) {
       <div class="pg-pin pin-row"><button class="ghost" data-act="close-modal">やめる</button><button class="primary big" data-act="confirm-restart">新しい選手を作る</button></div></div></div>`;
   }
   if (ui.modal === 'contest') {
-    return `<div class="modal"><div class="sheet">${s ? artFrame(heroStage(s), 'contest', 'modal-art') : ''}<h3>大会に出場しますか？</h3>${s ? coachBox(contestLine(s)) : ''}<div class="lineup">${RIVALS.map((r) => rivalFace(r.id)).join('')}<span>ほか5名と競う</span></div><p>出場すると準備内容は変更できません。</p>
+    return `<div class="modal"><div class="sheet">${s ? artFrame(s, 'pose', 'modal-art') : ''}<h3>大会に出場しますか？</h3>${s ? coachBox(contestLine(s)) : ''}<div class="lineup">${RIVALS.map((r) => rivalFace(r.id)).join('')}<span>ほか5名と競う</span></div><p>出場すると準備内容は変更できません。</p>
       <div class="pg-pin pin-row"><button class="ghost" data-act="close-modal">準備に戻る</button><button class="primary big gold" data-act="confirm-compete">出場する</button></div></div></div>`;
   }
   if (ui.modal === 'intro' && s) {
@@ -606,14 +617,18 @@ root.addEventListener('click', (e) => {
     case 'go-title': go('title'); return;
     case 'go-shop': ui.shopTab = v as typeof ui.shopTab; go('shop'); return;
     case 'continue': go(s?.phase === 'done' ? 'result' : 'player'); return;
-    case 'new': if (hasSave()) { ui.modal = 'restart'; render(); } else go('create'); return;
-    case 'c-height': ui.create.heightCm = Number(v); render(); return;
-    case 'c-frame': ui.create.frame = v as Frame; render(); return;
-    case 'c-cat': ui.create.category = v as Category; render(); return;
-    case 'c-skin': ui.create.skinTone = Number(v); render(); return;
+    case 'new': if (hasSave()) { ui.modal = 'restart'; render(); } else { newCreate(); go('create'); } return;
+    case 'c-face': ui.create.face = v as Face; render(); return;
+    case 'c-reroll':
+      if (ui.create.rerolls <= 0) return;
+      ui.create.rerolls -= 1;
+      ui.create.roll = rollPlayer(Date.now() ^ (ui.create.rerolls * 7919));
+      render();
+      return;
     case 'start': {
-      const name = ui.create.name.trim() || '鷹野 蓮';
-      const g = newGame({ ...ui.create, name });
+      const face = FACES.find((f) => f.id === ui.create.face)!;
+      const name = ui.create.name.trim() || face.name;
+      const g = newGame({ ...ui.create.roll, name, face: face.id, skinTone: face.skinTone });
       if (g.player.category === 'classic') toast('クラシック部門はクラシックカットの衣装が必要です（ショップで購入）');
       ui.view = 'sheet-front';
       setState(g);
@@ -623,7 +638,7 @@ root.addEventListener('click', (e) => {
       return;
     }
     case 'restart': ui.modal = 'restart'; render(); return;
-    case 'confirm-restart': ui.modal = null; setState(null); ui.create.name = ''; go('create'); return;
+    case 'confirm-restart': ui.modal = null; setState(null); newCreate(); go('create'); return;
     case 'close-modal': {
       const wasReport = ui.modal === 'report';
       ui.modal = null;
@@ -709,7 +724,7 @@ root.addEventListener('click', (e) => {
         x.money += x.result.prize;
         x.phase = 'done';
       });
-      ui.view = 'contest';
+      ui.view = 'pose';
       ui.show = 0;
       go('result');
       return;
