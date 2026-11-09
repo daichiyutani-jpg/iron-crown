@@ -1,8 +1,8 @@
 // 大会の採点。採点式は scoreCompetitor に集約し、カテゴリー別の比重は data.ts の CATEGORIES で調整する。
-import { PARTS, type Frame, type Part } from '../body/anatomy';
+import { PARTS, type Frame, type Part } from './body';
 import { CATEGORIES, CONTEST, RIVALS, SCORE_LABEL, TRUNKS, type Category, type ScoreKey } from './data';
 import { bodyStats, leanMass, nextRand, stageFinish, type GameState } from './rules';
-import type { TrunksLook } from '../body/viewer';
+import type { TrunksLook } from './body';
 
 export interface CompetitorInput {
   name: string;

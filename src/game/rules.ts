@@ -1,5 +1,5 @@
 // ゲームの計算ルールを一元管理する（体重・体脂肪・筋肉・疲労・ケガ・日焼け・所持金）。
-import { PARTS, type Frame, type Part } from '../body/anatomy';
+import { PARTS, type Frame, type Part } from './body';
 import {
   CALORIE_PLANS, CATEGORIES, CONTEST, EXERCISES, EXTRA_SHIFT_PAY, ITEMS, MACRO_PLANS, PART_LABEL, PUBLIC_GYM, SLOTS,
   START_MONEY, VOLUME, WEEKLY_INCOME, WEEKS, BASE_FOOD_COST,

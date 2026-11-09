@@ -1,6 +1,6 @@
 // 2D イラスト（会話・育成結果・大会演出用）。体型の変化そのものは 3D が担い、ここは段階ごとの絵を選ぶだけ。
 // 置き場と命名は docs/ART_DIRECTION.md §6。
-import { PARTS } from '../body/anatomy';
+import { PARTS } from '../game/body';
 import { bodyStats, type GameState } from '../game/rules';
 import { COACH_ART, HERO_ART, RIVAL_ART, VENUE_ART } from './artList';
 

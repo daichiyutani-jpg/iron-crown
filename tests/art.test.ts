@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { PARTS } from '../src/body/anatomy';
+import { PARTS } from '../src/game/body';
 import { newGame } from '../src/game/rules';
 import { RIVALS } from '../src/game/data';
 import { heroArt, heroStage, rivalArt } from '../src/ui/art';

@@ -1,6 +1,6 @@
 // ゲームデータ（種目・商品・衣装・大会・ライバル）。数値の調整はここと rules.ts / scoring.ts で行う。
-import type { Part } from '../body/anatomy';
-import type { TrunksDesign, TrunksMaterial } from '../body/viewer';
+import type { Part } from './body';
+import type { TrunksDesign, TrunksMaterial } from './body';
 
 export const PART_LABEL: Record<Part, string> = {
   chest: '胸', back: '背中', shoulders: '肩', arms: '腕', legs: '脚', abs: '腹筋',

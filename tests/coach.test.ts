@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { PARTS } from '../src/body/anatomy';
+import { PARTS } from '../src/game/body';
 import { contestLine, introLines, MOODS, resultLine, weekLine } from '../src/game/coach';
 import { newGame, type WeekReport } from '../src/game/rules';
 import { coachArt } from '../src/ui/art';

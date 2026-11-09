@@ -1,5 +1,5 @@
 // トレーナー（神崎 真琴）の会話。状態から「表情」と「せりふ」を選ぶだけで、ゲームの数値は変えない。
-import { PARTS } from '../body/anatomy';
+import { PARTS } from './body';
 import { PART_LABEL, WEEKS } from './data';
 import { bodyStats, type GameState } from './rules';
 

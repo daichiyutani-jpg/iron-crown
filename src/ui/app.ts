@@ -1,5 +1,5 @@
 // 画面とナビゲーション。状態は store.ts、計算は rules.ts / scoring.ts に集約し、ここは表示と操作だけを担う。
-import { PARTS, type Frame, type Part } from '../body/anatomy';
+import { PARTS, type Frame, type Part } from '../game/body';
 import {
   CALORIE_PLANS, CATEGORIES, CONTEST, DESIGN_LABEL, EQUIP_LABEL, EXERCISES, GRADE_LABEL, ITEMS, MACRO_PLANS, MATERIAL_LABEL,
   PART_LABEL, RIVALS, SCORE_LABEL, SLOTS, TRUNKS, VOLUME, WEEKS,
