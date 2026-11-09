@@ -63,7 +63,7 @@ describe('大会の後も続けて遊べる', () => {
     console.log('places', places.join(','), 'money', s.money);
   });
 
-  it('3シーズン続けて入賞できないとゲームオーバー。入賞すれば数え直し', () => {
+  it('3シーズン続けて入賞できないと引退。入賞すれば数え直し', () => {
     const fake = (s: GameState, place: number): GameState => {
       const r = { category: s.player.category, ranking: [], playerPlace: place, prize: 0, good: [], improve: [], notes: [], compareWith: '' };
       return { ...s, phase: 'done', result: r } as GameState;
@@ -76,7 +76,7 @@ describe('大会の後も続けて遊べる', () => {
     s = fake(nextSeason(s), 4);
     expect(missStreak(s)).toBe(3);
     expect(isGameOver(s)).toBe(true);
-    // ゲームオーバーの後は次の大会へ進めない
+    // 引退の後は次の大会へ進めない
     expect(nextSeason(s).phase).toBe('done');
   });
 

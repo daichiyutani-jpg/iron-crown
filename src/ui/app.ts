@@ -100,7 +100,7 @@ function viewerBlock(s: GameState, extra = '') {
 // ---- 共通の枠 ----
 function header(s: GameState) {
   const left = Math.max(0, WEEKS - s.week + 1);
-  const wk = s.phase === 'season' ? `第${s.week}週 <small>/ ${WEEKS}</small>` : s.phase === 'contestDay' ? '大会前日' : '大会終了';
+  const wk = s.phase === 'season' ? `<small>${s.season ?? 1}年目</small> 第${s.week}週 <small>/ ${WEEKS}</small>` : s.phase === 'contestDay' ? '大会前日' : '大会終了';
   const sub = s.phase === 'season' ? `第${s.season ?? 1}回大会まで残り${left}週` : CATEGORIES[s.player.category].name;
   return `<header class="top">
     <div class="brand">IRON<span>CROWN</span></div>
@@ -142,7 +142,7 @@ function titleScreen() {
       <p>ボディビル大会 育成シミュレーション</p>
     </div>
     <div class="title-btns">
-      ${save && s ? `<button class="primary big" data-act="continue">続きから<small>${esc(s.player.name)}・${s.phase === 'season' ? `第${s.season ?? 1}回・第${s.week}週` : s.phase === 'contestDay' ? '大会前日' : isGameOver(s) ? 'GAME OVER' : '大会終了'}</small></button>` : ''}
+      ${save && s ? `<button class="primary big" data-act="continue">続きから<small>${esc(s.player.name)}・${s.phase === 'season' ? `${s.season ?? 1}年目・第${s.week}週` : s.phase === 'contestDay' ? '大会前日' : isGameOver(s) ? '引退' : '大会終了'}</small></button>` : ''}
       <button class="${save ? 'ghost' : 'primary'} big" data-act="new">新しい選手で始める</button>
     </div>
     <p class="fine">${WEEKS}週間で体を作り、${esc(CONTEST.name)}で優勝を目指す。<br>セーブデータはこの端末のブラウザ内にだけ保存されます。</p>
@@ -512,12 +512,12 @@ function recordsBlock(s: GameState, withNow = false) {
   const wins = rows.filter((r) => r.place === 1).length;
   return `<h3>戦績 <small>優勝${wins}回</small></h3><ol class="records pg-split">${rows.map((r) => `<li class="${r.place === 1 ? 'win' : ''}"><span>第${r.season}回</span><span>${CATEGORIES[r.category].short}</span><b>${r.place}位</b><em>${r.prize ? yen(r.prize) : '—'}</em></li>`).join('')}</ol>`;
 }
-/** 入賞できなかった回数の注意（あと何回でゲームオーバーか） */
+/** 入賞できなかった回数の注意（あと何回で引退か） */
 function streakNote(s: GameState) {
   const m = missStreak(s);
   if (!m) return '';
   const left = MISS_LIMIT - m;
-  return `<div class="alert">入賞なしが${m}回続いている。${left === 1 ? `次の大会で${PRIZE_PLACES}位以内に入れないと` : `あと${left}回続けて入賞できないと`}ゲームオーバー。</div>`;
+  return `<div class="alert">入賞なしが${m}回続いている。${left === 1 ? `次の大会で${PRIZE_PLACES}位以内に入れないと` : `あと${left}回続けて入賞できないと`}引退。</div>`;
 }
 const contestName = (s: GameState) => `第${s.season ?? 1}回 ${CONTEST.name}`;
 function resultScreen(s: GameState) {
@@ -546,7 +546,7 @@ function resultScreen(s: GameState) {
     ${recordsBlock(s, true)}
     ${isGameOver(s) ? '' : streakNote(s)}
     ${isGameOver(s)
-      ? `<div class="pg-pin pin-col"><div class="gameover"><b>GAME OVER</b><span>${MISS_LIMIT}回続けて入賞（${PRIZE_PLACES}位以内）できなかった。${esc(s.player.name)}はステージを降りた。</span></div><button class="primary big gold" data-act="restart">新しい選手で始める</button></div>`
+      ? `<div class="pg-pin pin-col"><div class="retire"><b>引退</b><span>${MISS_LIMIT}回続けて入賞（${PRIZE_PLACES}位以内）できなかった。${esc(s.player.name)}は${s.season ?? 1}年の競技生活に区切りをつけ、現役を退いた。</span></div><button class="primary big gold" data-act="restart">新しい選手で始める</button></div>`
       : `<div class="pg-pin pin-row"><button class="ghost" data-act="restart">新しい選手</button><button class="primary big gold" data-act="next-season">第${(s.season ?? 1) + 1}回大会へ（続ける）</button></div>`}
   </div>`;
 }
@@ -646,7 +646,7 @@ const HOWTO: { title: string; mood: 'serious' | 'encourage' | 'nervous' | 'achie
   { title: `大会は${WEEKS}週後`, mood: 'achievement', lines: [
     '審査は<b>筋肉・絞り（体脂肪）・ポーズ・肌</b>など。上の「今出たら◯位」が今の実力。',
     '前半は<b>増量</b>で筋肉を増やし、後半は<b>減量</b>と<b>有酸素</b>で絞る。青い<b>食事のおすすめ</b>をタップすれば切り替わる。',
-    '<b>3回続けて入賞（3位以内）できないとゲームオーバー</b>。後半は<b>ポーズ練習</b>も毎週。',
+    '<b>3回続けて入賞（3位以内）できないと引退</b>。後半は<b>ポーズ練習</b>も毎週。',
     'お金が足りない時は<b>バイト</b>。ジムのパスや日焼け用品はショップで買える。',
   ] },
 ];

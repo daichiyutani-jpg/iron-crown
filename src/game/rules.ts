@@ -465,10 +465,10 @@ export function advanceWeek(s0: GameState): GameState {
   return s;
 }
 
-// ---- 入賞とゲームオーバー ----
+// ---- 入賞と引退 ----
 /** 入賞は3位まで（賞金が出る順位） */
 export const PRIZE_PLACES = 3;
-/** 何シーズン続けて入賞できないとゲームオーバー（引退）か */
+/** 何シーズン続けて入賞できないと引退か */
 export const MISS_LIMIT = 3;
 /** 直近で続けて入賞できなかった回数（今回の結果を含む） */
 export function missStreak(s: GameState): number {
@@ -477,7 +477,7 @@ export function missStreak(s: GameState): number {
   for (let i = places.length - 1; i >= 0 && places[i] > PRIZE_PLACES; i--) n++;
   return n;
 }
-/** 3シーズン続けて入賞できなかったらゲームオーバー */
+/** 3シーズン続けて入賞できなかったら引退（ゲーム終了） */
 export function isGameOver(s: GameState): boolean {
   return s.phase === 'done' && !!s.result && missStreak(s) >= MISS_LIMIT;
 }
