@@ -64,6 +64,12 @@ main { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bot
 .viewer { height: min(56dvh, 520px); position: relative; touch-action: none; }
 .r-fitting .viewer, .r-result .viewer { height: min(50dvh, 480px); }
 .viewer canvas { display: block; }
+.viewer.figure { display: flex; justify-content: center; align-items: flex-end; overflow: hidden; background: radial-gradient(ellipse at 50% 85%, #2a2410 0%, #0f1630 45%, #070b18 100%); touch-action: auto; }
+.viewer.figure img { height: 100%; width: auto; max-width: 100%; object-fit: contain; display: block; }
+.fig-stage { position: absolute; left: 10px; top: 10px; font-size: 11px; color: var(--sub); background: rgba(7,11,24,.75); border: 1px solid #3a321c; border-radius: 999px; padding: 3px 10px; }
+.fig-stage b { color: #e8c25a; }
+.fig-trunks { position: absolute; right: 10px; top: 10px; display: flex; align-items: center; gap: 6px; font-size: 11px; background: rgba(7,11,24,.75); border-radius: 999px; padding: 3px 10px 3px 4px; }
+.fig-trunks i { width: 18px; height: 18px; border-radius: 50%; border: 3px solid; }
 .viewer-loading { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; color: var(--sub); font-size: 13px; letter-spacing: 0.1em; pointer-events: none; }
 .pose-row { display: flex; gap: 6px; overflow-x: auto; padding: 8px 12px; scrollbar-width: none; }
 .pose-row::-webkit-scrollbar { display: none; }

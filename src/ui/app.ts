@@ -1,7 +1,5 @@
 // 画面とナビゲーション。状態は store.ts、計算は rules.ts / scoring.ts に集約し、ここは表示と操作だけを担う。
-import { PARTS, type BodyParams, type Frame, type Part } from '../body/anatomy';
-import { POSES, POSE_ORDER, type PoseId } from '../body/poses';
-import { getViewer, type Look } from '../body/viewer';
+import { PARTS, type Frame, type Part } from '../body/anatomy';
 import {
   CALORIE_PLANS, CATEGORIES, CONTEST, DESIGN_LABEL, EQUIP_LABEL, EXERCISES, GRADE_LABEL, ITEMS, MACRO_PLANS, MATERIAL_LABEL,
   PART_LABEL, RIVALS, SCORE_LABEL, SLOTS, TRUNKS, VOLUME, WEEKS,
@@ -20,7 +18,7 @@ import { coachArt, heroArt, heroStage, rivalArt, STAGE_LABEL, type ArtUse, type 
 type Route = 'title' | 'create' | 'player' | 'training' | 'diet' | 'shop' | 'fitting' | 'contest' | 'result';
 const ui = {
   route: 'title' as Route,
-  pose: 'relaxed' as PoseId,
+  view: 'sheet-front' as ArtUse, // 選手の絵の向き（正面・背面・側面・ポーズ）
   part: 'chest' as Part,
   vol: {} as Record<string, Volume>,
   shopTab: 'tan' as 'tan' | 'trunks' | 'cond',
@@ -73,46 +71,19 @@ function toast(msg: string, bad = false) {
   toastTimer = window.setTimeout(() => (t!.className = ''), 2200);
 }
 
-// ---- 3D 表示の連携 ----
-function bodyParams(s: GameState, pose: PoseId): BodyParams {
-  const st = bodyStats(s);
-  const fin = s.phase === 'season' ? null : stageFinish(s);
-  return {
-    heightCm: s.player.heightCm, frame: s.player.frame, dev: s.body.dev, bodyFat: st.bf,
-    imbalance: s.body.imbalance, fullness: fin ? fin.fullness : s.body.fullness, pose,
-  };
-}
-function lookOf(s: GameState, trunksKey?: string): Look {
-  const fin = s.phase === 'season' ? null : stageFinish(s);
-  return {
-    skinTone: s.player.skinTone,
-    tan: fin ? fin.level : s.tan.level,
-    uneven: fin ? fin.uneven : s.tan.uneven,
-    orange: fin ? fin.orange : s.tan.orange,
-    shine: fin ? fin.shine : 0.12,
-    trunks: trunksLook(trunksKey ?? s.trunksEquipped),
-  };
-}
-function mountViewer(s: GameState, trunksKey?: string) {
-  const host = document.getElementById('viewer');
-  if (!host) return;
-  const v = getViewer();
-  v.attach(host);
-  v.setLook(lookOf(s, trunksKey));
-  void v.setBody(bodyParams(s, ui.pose));
-  // 次に選ばれやすいポーズを先読み
-  const i = POSE_ORDER.indexOf(ui.pose);
-  v.prefetch(bodyParams(s, POSE_ORDER[(i + 1) % POSE_ORDER.length]));
-}
-function viewerBlock(extra = '') {
+// ---- 選手の絵（2D）。育成段階ごとのイラストを向き別に見せる ----
+const VIEWS: [ArtUse, string][] = [['sheet-front', '正面'], ['sheet-back', '背面'], ['sheet-side', '側面'], ['contest', 'ポーズ']];
+function viewerBlock(s: GameState, extra = '') {
+  const stage = heroStage(s);
+  const url = heroArt(stage, ui.view);
+  const tk = ui.route === 'fitting' ? ui.preview ?? s.trunksEquipped : s.trunksEquipped;
+  const t = trunksLook(tk);
   return `<div class="viewer-wrap">
-    <div id="viewer" class="viewer"></div>
-    <div class="pose-row">${POSE_ORDER.map((p) => `<button class="chip ${ui.pose === p ? 'on' : ''}" data-act="pose" data-v="${p}">${POSES[p].label}</button>`).join('')}</div>
-    <div class="view-btns">
-      <button class="icon" data-act="frame" data-v="full" title="全身">全身</button>
-      <button class="icon" data-act="frame" data-v="upper" title="上半身">上半身</button>
-      <button class="icon" data-act="frame" data-v="lower" title="脚">脚</button>
+    <div class="viewer figure">${url ? `<img src="${url}" alt="" decoding="async">` : ''}
+      <div class="fig-stage">育成段階 <b>${STAGE_LABEL[stage]}</b></div>
+      ${ui.route === 'fitting' ? `<div class="fig-trunks"><i style="background:${t.color};border-color:${t.accent}"></i>衣装の色</div>` : ''}
     </div>
+    <div class="pose-row">${VIEWS.map(([k, l]) => `<button class="chip ${ui.view === k ? 'on' : ''}" data-act="view" data-v="${k}">${l}</button>`).join('')}</div>
     ${extra}
   </div>`;
 }
@@ -215,7 +186,7 @@ function playerScreen(s: GameState) {
   const cat = categoryOf(s);
   const cap = cat.weightCap?.(s.player.heightCm);
   const frameName = FRAME_INFO[s.player.frame][0];
-  return `${viewerBlock()}
+  return `${viewerBlock(s)}
   <div class="page">
     <div class="pcard">
       ${artFrame(heroStage(s), 'portrait', 'pc-art')}
@@ -391,7 +362,7 @@ function fittingScreen(s: GameState) {
   const banner = ui.preview ? `<div class="preview-bar">試着中：${prevModel!.name}（${prevModel!.colors.find((c) => c.id === ui.preview!.split(':')[1])!.name}）
      ${prevOwned ? `<button class="primary sm" data-act="equip" data-v="${ui.preview}">装備する</button>` : `<button class="primary sm" data-act="buy-trunks" data-v="${ui.preview}" ${s.money < prevModel!.price ? 'disabled' : ''}>${yen(prevModel!.price)}で購入</button>`}
      <button class="ghost sm" data-act="end-try">試着をやめる</button></div>` : '';
-  return `${viewerBlock(banner)}
+  return `${viewerBlock(s, banner)}
   <div class="page">
     <h2>日焼け・衣装</h2>
     <h3>肌の状態</h3>
@@ -487,7 +458,7 @@ function resultScreen(s: GameState) {
   const me = r.ranking.find((c) => c.isPlayer)!;
   const other = r.ranking.find((c) => c.name === r.compareWith)!;
   const keys = Object.keys(SCORE_LABEL) as ScoreKey[];
-  return `${viewerBlock()}
+  return `${viewerBlock(s)}
   <div class="page">
     ${artFrame(heroStage(s), r.playerPlace === 1 ? 'win' : 'contest', 'result-art', r.playerPlace === 1 ? '<div class="burst win">優勝!!</div>' : '')}
     <div class="place"><span>${CATEGORIES[r.category].name}</span><b>${r.playerPlace}<small>位</small></b><em>${r.playerPlace === 1 ? '優勝 ─ IRON CROWN 獲得' : `${r.ranking.length}名中`}</em>${r.prize ? `<strong>賞金 ${yen(r.prize)}</strong>` : ''}</div>
@@ -614,7 +585,6 @@ function render() {
   const sc = document.querySelector('main');
   if (sc && sameRoute === ui.route) sc.scrollTop = scroll;
   sameRoute = ui.route;
-  if (s && document.getElementById('viewer')) mountViewer(s, ui.route === 'fitting' ? ui.preview ?? undefined : undefined);
 }
 let sameRoute: Route = 'title';
 
@@ -650,7 +620,7 @@ root.addEventListener('click', (e) => {
       const name = ui.create.name.trim() || '鷹野 蓮';
       const g = newGame({ ...ui.create, name });
       if (g.player.category === 'classic') toast('クラシック部門はクラシックカットの衣装が必要です（ショップで購入）');
-      ui.pose = 'relaxed';
+      ui.view = 'sheet-front';
       setState(g);
       ui.introStep = 0;
       ui.modal = 'intro';
@@ -665,8 +635,7 @@ root.addEventListener('click', (e) => {
       if (wasReport && s?.phase === 'contestDay') go('contest'); else render();
       return;
     }
-    case 'pose': ui.pose = v as PoseId; if (s) void getViewer().setBody(bodyParams(s, ui.pose)); document.querySelectorAll('.pose-row .chip').forEach((c) => c.classList.toggle('on', (c as HTMLElement).dataset.v === v)); return;
-    case 'frame': getViewer().frame(v as 'full'); return;
+    case 'view': ui.view = v as ArtUse; render(); return;
     case 'rival': ui.rival = v; ui.modal = 'rival'; render(); return;
     case 'coach': ui.modal = 'coach'; render(); return;
     case 'intro-next': ui.introStep++; render(); return;
@@ -745,7 +714,7 @@ root.addEventListener('click', (e) => {
         x.money += x.result.prize;
         x.phase = 'done';
       });
-      ui.pose = 'frontDouble';
+      ui.view = 'contest';
       ui.show = 0;
       go('result');
       return;
