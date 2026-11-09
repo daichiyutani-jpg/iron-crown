@@ -33,7 +33,7 @@ export function showHtml(s: GameState, step: number): string {
   let next = '次へ';
   if (step === 0) {
     body = `${bg('stage', 'zoom')}${flashes()}
-      <div class="show-title"><span>${esc(CATEGORIES[r.category].name)}</span><b>${esc(CONTEST.name)}</b><em>まもなく開幕</em></div>
+      <div class="show-title"><span>${esc(CATEGORIES[r.category].name)}</span><b>${esc(`第${s.season ?? 1}回 ${CONTEST.name}`)}</b><em>まもなく開幕</em></div>
       <div class="preload">${[...r.ranking.map((c) => artOf(s, c)), artOf(s, r.ranking.find((c) => c.isPlayer)!, true), venueArt('crowd'), venueArt('podium')].filter(Boolean).map((u) => `<img src="${u}" alt="">`).join('')}</div>`;
   } else if (step === 1) {
     body = `${bg('stage', 'dim')}

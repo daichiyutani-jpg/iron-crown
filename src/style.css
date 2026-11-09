@@ -455,3 +455,8 @@ main > .page.paged { flex: 1; padding: 10px 16px 8px; }
 .howto-body ul { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; line-height: 1.6; }
 .howto-body b { color: var(--gold); }
 .clear-btn { width: 100%; margin-bottom: 6px; min-height: 34px; }
+.records { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.records li { display: grid; grid-template-columns: 64px 1fr 48px 90px; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; font-size: 13px; }
+.records li.win { border-color: var(--gold); }
+.records li.win b { color: var(--gold); }
+.records em { font-style: normal; color: var(--sub); text-align: right; }

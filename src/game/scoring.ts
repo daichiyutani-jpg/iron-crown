@@ -134,8 +134,15 @@ export function playerInput(s: GameState): CompetitorInput {
   };
 }
 
-export function rivalInputs(cat: Category): CompetitorInput[] {
-  return RIVALS.map((r) => {
+/** ライバルも毎年鍛えてくる（2回目以降の大会。伸びは少しずつ鈍る） */
+export function rivalGrowth(season = 1): number {
+  const n = Math.max(0, season - 1);
+  return 9 * (1 - Math.exp(-n / 3));
+}
+export function rivalInputs(cat: Category, season = 1): CompetitorInput[] {
+  const up = rivalGrowth(season);
+  return RIVALS.map((r0) => {
+    const r = { ...r0, dev: Object.fromEntries(Object.entries(r0.dev).map(([k, v]) => [k, Math.min(98, v + up)])) as typeof r0.dev, posing: Math.min(95, r0.posing + up * 0.8), condition: Math.min(95, r0.condition + up * 0.4) };
     const lean = leanMass(r.dev, r.heightCm, r.frame);
     const weight = lean / (1 - r.bodyFat / 100);
     // ライバルもカテゴリー規定に合わせて準備してくる
@@ -161,7 +168,7 @@ const HINT: Record<ScoreKey, string> = {
 
 export function runContest(s: GameState): ContestResult {
   const cat = s.player.category;
-  const inputs = [playerInput(s), ...rivalInputs(cat)];
+  const inputs = [playerInput(s), ...rivalInputs(cat, s.season)];
   const scored: CompetitorScore[] = inputs.map((c, i) => {
     const sc = scoreCompetitor(c, cat);
     const noise = (nextRand(s) - 0.5) * 1.6; // 審査員ごとの僅かな差

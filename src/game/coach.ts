@@ -14,6 +14,15 @@ export interface CoachLine { mood: Mood; text: string }
 
 /** 新しい選手を作った直後 */
 export function introLines(s: GameState): CoachLine[] {
+  const n = s.season ?? 1;
+  if (n > 1) {
+    const last = s.records?.[s.records.length - 1];
+    return [
+      { mood: last?.place === 1 ? 'joy' : 'serious', text: last?.place === 1 ? `前回は優勝。でも王者は追われる側だ。第${n}回大会まで${WEEKS}週、もう一度仕上げよう。` : `前回は${last?.place ?? '-'}位。悔しさは体で返そう。第${n}回大会まで${WEEKS}週。` },
+      ...(s.offGain ? [{ mood: 'achievement' as Mood, text: `オフの増量期で体が一回り大きくなった。${[...PARTS].sort((a, b) => s.offGain![b] - s.offGain![a]).slice(0, 3).map((p) => `${PART_LABEL[p]} +${s.offGain![p].toFixed(1)}`).join('、')}。` }] : []),
+      { mood: 'encourage', text: 'ライバルたちもこの1年で鍛えてきている。いったん戻った体脂肪を、また12週で絞ろう。' },
+    ];
+  }
   return [
     { mood: 'serious', text: `今日からあなたを担当する${COACH_NAME}。大会まで${WEEKS}週、体は嘘をつかない。` },
     { mood: 'encourage', text: `${s.player.name}、まずは食事と練習の計画から。毎週の結果は私が一緒に見る。` },

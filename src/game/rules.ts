@@ -93,6 +93,12 @@ export interface GameState {
   result: import('./scoring').ContestResult | null;
   rng: number;
   lastReport: WeekReport | null;
+  /** 何回目の大会に向けたシーズンか（無ければ1） */
+  season?: number;
+  /** これまでの大会の結果 */
+  records?: { season: number; place: number; prize: number; category: Category }[];
+  /** 直前のオフで育った分（次のシーズンの最初に見せる） */
+  offGain?: Record<Part, number>;
 }
 
 // ---- 乱数 ----
@@ -456,6 +462,47 @@ export function advanceWeek(s0: GameState): GameState {
     }
     s.plan = keep;
   }
+  return s;
+}
+
+// ---- 次のシーズン ----
+/** 大会の後、同じ選手で次の大会に向けて第1週からやり直す。筋肉・ポーズ・お金・持ち物・衣装は引き継ぐ */
+export function nextSeason(s0: GameState): GameState {
+  const s: GameState = structuredClone(s0);
+  if (s.phase !== 'done' || !s.result) return s;
+  const season = s.season ?? 1;
+  s.records = [...(s.records ?? []), { season, place: s.result.playerPlace, prize: s.result.prize, category: s.result.category }];
+  s.season = season + 1;
+  s.week = 1;
+  s.phase = 'season';
+  s.result = null;
+  s.lastReport = null;
+  s.plan = [];
+  s.prep = { color: false, gloss: false, carbUp: false };
+  s.trainLog = [];
+  const b = s.body;
+  // 大会と大会の間のオフ（増量期）で筋肉が育つ。伸びしろが減るほど伸びは小さくなる
+  const off = {} as Record<Part, number>;
+  for (const p of PARTS) {
+    const pot = Math.pow(Math.max(0, 1 - b.dev[p] / 105), 1.2);
+    off[p] = 5.5 * pot * (s.player.talent ?? 1) * (s.player.strong === p ? 1.2 : 1);
+    b.dev[p] = clamp(b.dev[p] + off[p], 5, 100);
+  }
+  s.offGain = off;
+  // 体脂肪は少し戻る
+  const lean = leanMass(b.dev, s.player.heightCm, s.player.frame);
+  b.fat += lean * 0.035;
+  b.fatigue = 15;
+  b.partFatigue = Object.fromEntries(PARTS.map((p) => [p, 10])) as Record<Part, number>;
+  b.injury = null;
+  b.condition = 80;
+  b.fullness = 0.9;
+  b.adapt = 0;
+  b.posing = clamp(b.posing - 4, 0, 100);
+  s.tan = { level: 4, uneven: 10, skin: 60, orange: 0, fade: 0.6, usedThisWeek: [] };
+  s.money -= CONTEST.entryFee;
+  const st = bodyStats(s);
+  s.history = [{ week: 0, weight: st.weight, bf: st.bf, muscle: muscleIndex(b.dev), fatigue: b.fatigue, condition: b.condition }];
   return s;
 }
 

@@ -143,6 +143,6 @@ export function recommend(s: GameState): { id: CommandId; why: string } | null {
 export function predictPlace(s: GameState): { place: number; of: number } {
   const cat = s.player.category;
   const me = totalScore(scoreCompetitor(playerInput(s), cat), cat);
-  const others = rivalInputs(cat).map((r) => totalScore(scoreCompetitor(r, cat), cat));
+  const others = rivalInputs(cat, s.season).map((r) => totalScore(scoreCompetitor(r, cat), cat));
   return { place: 1 + others.filter((t) => t > me).length, of: others.length + 1 };
 }

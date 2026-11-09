@@ -6,7 +6,7 @@ import {
   type CaloriePlan, type MacroPlan, type ScoreKey, type Volume,
 } from '../game/data';
 import {
-  actionStamina, advanceWeek, bodyStats, buyItem, buyTrunks, canAddAction, canUseExercise, categoryOf, GROWTH_LABEL, newGame, rollPlayer,
+  actionStamina, advanceWeek, nextSeason, bodyStats, buyItem, buyTrunks, canAddAction, canUseExercise, categoryOf, GROWTH_LABEL, newGame, rollPlayer,
   nutrition, planStamina, projectGrowth, stageFinish, staminaMax, useItem, type Action, type GameState,
 } from '../game/rules';
 import { runContest, trunksLook, trunksViolation } from '../game/scoring';
@@ -101,7 +101,7 @@ function viewerBlock(s: GameState, extra = '') {
 function header(s: GameState) {
   const left = Math.max(0, WEEKS - s.week + 1);
   const wk = s.phase === 'season' ? `第${s.week}週 <small>/ ${WEEKS}</small>` : s.phase === 'contestDay' ? '大会前日' : '大会終了';
-  const sub = s.phase === 'season' ? `大会まで残り${left}週` : CATEGORIES[s.player.category].name;
+  const sub = s.phase === 'season' ? `第${s.season ?? 1}回大会まで残り${left}週` : CATEGORIES[s.player.category].name;
   return `<header class="top">
     <div class="brand">IRON<span>CROWN</span></div>
     <div class="hstat"><b>${wk}</b><span>${sub}</span></div>
@@ -142,7 +142,7 @@ function titleScreen() {
       <p>ボディビル大会 育成シミュレーション</p>
     </div>
     <div class="title-btns">
-      ${save && s ? `<button class="primary big" data-act="continue">続きから<small>${esc(s.player.name)}・${s.phase === 'season' ? `第${s.week}週` : s.phase === 'contestDay' ? '大会前日' : '大会終了'}</small></button>` : ''}
+      ${save && s ? `<button class="primary big" data-act="continue">続きから<small>${esc(s.player.name)}・${s.phase === 'season' ? `第${s.season ?? 1}回・第${s.week}週` : s.phase === 'contestDay' ? '大会前日' : '大会終了'}</small></button>` : ''}
       <button class="${save ? 'ghost' : 'primary'} big" data-act="new">新しい選手で始める</button>
     </div>
     <p class="fine">12週間で体を作り、${esc(CONTEST.name)}で優勝を目指す。<br>セーブデータはこの端末のブラウザ内にだけ保存されます。</p>
@@ -228,6 +228,7 @@ function playerScreen(s: GameState) {
     <div class="kv"><span>肌の色の濃さ／色ムラ</span><b>${fx(s.tan.level, 0)}／${fx(s.tan.uneven, 0)}</b></div>
     <h3>体重の推移</h3>${sparkline(s, 'weight', '#d8d8dc')}
     <h3>体脂肪率の推移</h3>${sparkline(s, 'bf', '#c9a54a')}
+    ${recordsBlock(s)}
     ${s.lastReport ? `<h3>先週の結果</h3><ul class="report pg-split">${s.lastReport.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : ''}
     ${advanceButton(s)}
   </div>`;
@@ -463,7 +464,7 @@ function contestScreen(s: GameState) {
   };
   return `<div class="page">
     <h2>${isDay ? '大会前日の最終準備' : '大会準備チェック'}</h2>
-    <div class="contest-card"><b>${CONTEST.name}</b><span>${cat.name}／出場 6名／優勝賞金 ${yen(CONTEST.prize[0])}</span>
+    <div class="contest-card"><b>${contestName(s)}</b><span>${cat.name}／出場 6名／優勝賞金 ${yen(CONTEST.prize[0])}</span>
       <span>${s.phase === 'season' ? `本番まで残り${WEEKS - s.week + 1}週（第${WEEKS}週を終えると大会前日）` : isDay ? '明日が本番' : '大会終了'}</span></div>
     <h3>仕上がりチェック</h3>
     <div class="checks pg-split">${cs.map((c) => `<div class="chk lv-${c.level}"><i></i><span>${c.label}</span><b>${c.value}</b>${c.hint ? `<p>${c.hint}</p>` : ''}</div>`).join('')}</div>
@@ -495,6 +496,15 @@ function winnerCard(r: NonNullable<GameState['result']>) {
   if (!rv || !url) return '';
   return `<div class="winner"><div class="art"><img src="${url}" alt="" decoding="async"></div><div><span>優勝</span><b>${esc(rv.name)}</b><p>${esc(rv.style)}</p></div></div>`;
 }
+/** これまでの戦績。withNow=true なら今回の結果も並べる */
+function recordsBlock(s: GameState, withNow = false) {
+  const rows = [...(s.records ?? [])];
+  if (withNow && s.result) rows.push({ season: s.season ?? 1, place: s.result.playerPlace, prize: s.result.prize, category: s.result.category });
+  if (!rows.length) return '';
+  const wins = rows.filter((r) => r.place === 1).length;
+  return `<h3>戦績 <small>優勝${wins}回</small></h3><ol class="records pg-split">${rows.map((r) => `<li class="${r.place === 1 ? 'win' : ''}"><span>第${r.season}回</span><span>${CATEGORIES[r.category].short}</span><b>${r.place}位</b><em>${r.prize ? yen(r.prize) : '—'}</em></li>`).join('')}</ol>`;
+}
+const contestName = (s: GameState) => `第${s.season ?? 1}回 ${CONTEST.name}`;
 function resultScreen(s: GameState) {
   const r = s.result!;
   const me = r.ranking.find((c) => c.isPlayer)!;
@@ -518,7 +528,8 @@ function resultScreen(s: GameState) {
     <h3>次回の改善点</h3><ul class="report pg-split">${r.improve.map((g) => `<li>${esc(g)}</li>`).join('')}</ul>
     <h3>ライバル</h3>
     ${rivalStrip()}
-    <button class="primary big pg-pin" data-act="restart">新しい選手で再挑戦</button>
+    ${recordsBlock(s, true)}
+    <div class="pg-pin pin-row"><button class="ghost" data-act="restart">新しい選手</button><button class="primary big gold" data-act="next-season">第${(s.season ?? 1) + 1}回大会へ（続ける）</button></div>
   </div>`;
 }
 
@@ -709,6 +720,16 @@ root.addEventListener('click', (e) => {
       return;
     }
     case 'restart': ui.modal = 'restart'; render(); return;
+    case 'next-season': {
+      if (!s || s.phase !== 'done') return;
+      setState(nextSeason(s));
+      ui.view = 'sheet-front';
+      ui.show = -1;
+      ui.introStep = 0;
+      ui.modal = 'intro';
+      go('player');
+      return;
+    }
     case 'confirm-restart': ui.modal = null; setState(null); newCreate(); go('create'); return;
     case 'close-modal': {
       const wasReport = ui.modal === 'report';
