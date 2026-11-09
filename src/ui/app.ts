@@ -7,7 +7,7 @@ import {
 } from '../game/data';
 import {
   actionStamina, advanceWeek, nextSeason, isGameOver, missStreak, MISS_LIMIT, PRIZE_PLACES, bodyStats, buyItem, buyTrunks, canAddAction, canUseExercise, categoryOf, GROWTH_LABEL, newGame, rollPlayer,
-  nutrition, planStamina, projectGrowth, stageFinish, staminaMax, useItem, type Action, type GameState,
+  nutrition, planStamina, projectGrowth, projectWeek, ptsOf, raiseCost, raisePart, rankOf, nextRank, RANKS, stageFinish, staminaMax, useItem, type Action, type GameState,
 } from '../game/rules';
 import { runContest, trunksLook, trunksViolation } from '../game/scoring';
 import { getState, hasSave, mutate, setState, subscribe } from '../game/store';
@@ -19,7 +19,7 @@ import { forgetPages, paginate } from './pager';
 import { coachArt, heroArt, heroStage, playerArt, rivalArt, STAGE_LABEL, type ArtUse, type Face, type RivalUse } from './art';
 
 const REROLLS = 3; // 能力の引き直しの回数
-type Route = 'title' | 'create' | 'player' | 'training' | 'diet' | 'shop' | 'fitting' | 'contest' | 'result';
+type Route = 'title' | 'create' | 'player' | 'training' | 'diet' | 'shop' | 'fitting' | 'contest' | 'result' | 'muscle';
 const ui = {
   route: 'title' as Route,
   view: 'sheet-front' as ArtUse, // 選手の絵の向き（正面・背面・側面・ポーズ）
@@ -109,6 +109,42 @@ const NAV: [Route, string, string][] = [
   ['fitting', '日焼け・衣装', 'M8 4l4 2 4-2 4 4-3 3v9H7v-9L4 8z'],
   ['contest', '大会', 'M7 4h10v4a5 5 0 0 1-10 0zm5 9v4m-4 3h8M5 5H3v2a3 3 0 0 0 3 3m13-5h2v2a3 3 0 0 1-3 3'],
 ];
+/** ランクの札（G〜SS） */
+const rankBadge = (dev: number) => { const r = rankOf(dev); return `<i class="rk rk-${r}">${r}</i>`; };
+/** 部位の行（ランク・値・ゲージ） */
+const partRow = (p: Part, dev: number) => `<div class="prow">${rankBadge(dev)}<span>${PART_LABEL[p]}</span>${bar(dev)}<b>${fx(dev)}</b></div>`;
+/** 使えるポイントがある部位の数 */
+function raisable(s: GameState): number {
+  const pts = ptsOf(s);
+  return PARTS.filter((p) => s.body.dev[p] < 100 && pts[p] >= raiseCost(s.body.dev[p])).length;
+}
+
+// ---- 筋肉を大きくする（筋肉ポイントを使う） ----
+function muscleScreen(s: GameState) {
+  const pts = ptsOf(s);
+  const n = raisable(s);
+  return `<div class="page">
+    <div class="t-head"><h2>筋肉を大きくする</h2><button class="ghost sm" data-act="go" data-v="training">‹ 練習へ</button></div>
+    <p class="hint">練習でたまった<b>部位ごとの筋肉ポイント</b>を使って、好きな部位を大きくする。値が高いほど +1 に要るポイントが増える。ポイントは次の週にも残るが、使わないと大会の審査には出ない。</p>
+    <div class="mus pg-split">${PARTS.map((p) => {
+      const d = s.body.dev[p];
+      const c = raiseCost(d);
+      const can = d < 100 && pts[p] >= c;
+      const max = Math.min(100 - Math.floor(d), (() => { let k = 0, left = pts[p], x = d; while (x < 100 && left >= raiseCost(x)) { left -= raiseCost(x); x += 1; k++; } return k; })());
+      const nx = nextRank(d);
+      return `<div class="mu ${can ? 'can' : ''}">
+        <div class="mu-h">${rankBadge(d)}<b>${PART_LABEL[p]}</b><span class="mu-v">${fx(d)}</span>${nx ? `<em>${nx.rank}まで あと${fx(Math.max(0, nx.at - d))}</em>` : '<em>最高ランク</em>'}</div>
+        ${bar(d)}
+        <div class="mu-f"><span>ポイント <b>${Math.floor(pts[p])}</b>pt</span><span>+1 に <b>${d >= 100 ? '—' : c}</b>pt</span>
+          <button class="primary sm" data-act="raise" data-v="${p}" ${can ? '' : 'disabled'}>+1</button>
+          <button class="ghost sm" data-act="raise-max" data-v="${p}" ${max > 1 ? '' : 'disabled'}>まとめて${max > 1 ? ` +${max}` : ''}</button></div>
+      </div>`;
+    }).join('')}</div>
+    <div class="rank-key">${[...RANKS].reverse().map(([r, m]) => `<span>${rankBadge(m)}${m}〜</span>`).join('')}</div>
+    <button class="primary big pg-pin" data-act="raise-all" ${n ? '' : 'disabled'}>${n ? 'ポイントを全部使う（それぞれの部位に）' : '使えるポイントがない（練習でためる）'}</button>
+  </div>`;
+}
+
 /** BGM のオン／オフ（画面上部） */
 function bgmButton() {
   const on = bgmOn();
@@ -184,7 +220,7 @@ function createScreen() {
       <div><span>ポージング</span><b>${st.posing}</b></div>
     </div>
     <p class="hint">${GROWTH_LABEL[r.growth ?? 'normal'][1]}。${FRAME_INFO[r.frame][1]}${r.category === 'classic' ? ' クラシック部門はクラシックカットの衣装が必要（ショップで購入）。' : ''}</p>
-    <div class="parts pg-split">${PARTS.map((p) => `<div class="prow"><span>${PART_LABEL[p]}</span>${bar(st.dev[p])}<b>${fx(st.dev[p])}</b></div>`).join('')}</div>
+    <div class="parts pg-split">${PARTS.map((p) => partRow(p, st.dev[p])).join('')}</div>
     <div class="pg-pin pin-row"><button class="ghost" data-act="go-title">戻る</button><button class="primary big" data-act="start">この選手で始める</button></div>
   </div>`;
 }
@@ -226,8 +262,9 @@ function playerScreen(s: GameState) {
       <div><span>コンディション</span><b>${fx(b.condition, 0)}</b></div>
     </div>
     ${b.injury ? `<div class="alert">負傷中：${PART_LABEL[b.injury.part]}（あと${b.injury.weeks}週）</div>` : ''}
-    <h3>部位別の発達</h3>
-    <div class="parts pg-split">${PARTS.map((p) => `<div class="prow"><span>${PART_LABEL[p]}</span>${bar(b.dev[p])}<b>${fx(b.dev[p])}</b></div>`).join('')}</div>
+    <h3>部位別の筋肉（ランク）</h3>
+    <div class="parts pg-split">${PARTS.map((p) => partRow(p, b.dev[p])).join('')}</div>
+    ${s.phase === 'season' ? `<button class="ghost muscle-go" data-act="go" data-v="muscle">筋肉を大きくする${raisable(s) ? `<i class="dot">${raisable(s)}</i>` : ''}</button>` : ''}
     <div class="kv"><span>左右差</span><b>${fx(Math.abs(b.imbalance))}%（${b.imbalance >= 0 ? '左' : '右'}側が大きい）</b></div>
     <div class="kv"><span>筋肉の張り</span><b>${fx(b.fullness * 100, 0)}%</b></div>
     <div class="kv"><span>ポージング完成度</span><b>${fx(b.posing, 0)}</b></div>
@@ -265,6 +302,7 @@ function trainingScreen(s: GameState) {
   };
   return `<div class="page">
     <div class="t-head"><h2>第${s.week}週の練習 <small>あと${SLOTS - s.plan.length}回えらべる</small></h2><button class="ghost sm" data-act="howto">？ 育て方</button></div>
+    <button class="muscle-line ${raisable(s) ? 'can' : ''}" data-act="go" data-v="muscle"><span>${PARTS.map((p) => `<em>${PART_LABEL[p]}${rankBadge(s.body.dev[p])}<small>${Math.floor(ptsOf(s)[p])}pt</small></em>`).join('')}</span><i>${raisable(s) ? `強化できる ${raisable(s)}` : '筋肉を見る'}</i></button>
     <div class="t-gauges">
       <div><span>体力 <b>${max - used}</b>/${max}</span>${bar(max - used, max, max - used < 15 ? 'warn' : 'gold')}</div>
       <div><span>週末の疲労 <b class="fl-${fl.cls}">${fl.label}</b> ${fx(base.f, 0)}</span>${bar(base.f, 100, `fl-${fl.cls}`)}</div>
@@ -297,7 +335,7 @@ function shortLabel(a: Action) {
 function exerciseScreen(s: GameState) {
   const used = planStamina(s.plan);
   const max = staminaMax(s);
-  const proj = projectGrowth(s);
+  const proj = projectWeek(s).pts;
   const exs = EXERCISES.filter((e) => e.part === ui.part);
   return `<div class="page">
     <div class="t-head"><h2>種目を選ぶ <small>体力 ${max - used}/${max}・あと${SLOTS - s.plan.length}回</small></h2><button class="ghost sm" data-act="detail" data-v="">‹ もどる</button></div>
@@ -307,7 +345,7 @@ function exerciseScreen(s: GameState) {
       const a: Action = { kind: 'train', ex: e.id, vol };
       const can = canAddAction(s, a);
       const use = canUseExercise(s, e);
-      const g = projectGrowth(s, [...s.plan, a])[e.part] - proj[e.part];
+      const g = projectWeek(s, [...s.plan, a]).pts[e.part] - proj[e.part];
       const riskLv = e.risk >= 0.018 ? '高' : e.risk >= 0.01 ? '中' : '低';
       const fatLv = e.fatigue >= 1.3 ? '大' : e.fatigue >= 0.85 ? '中' : '小';
       return `<div class="ex ${use.ok ? '' : 'dis'}">
@@ -316,7 +354,7 @@ function exerciseScreen(s: GameState) {
         <div class="ex-tags"><span>設備：${e.equip.length ? e.equip.map((q) => EQUIP_LABEL[q]).join('・') : 'なし'}</span><span>疲労：${fatLv}</span><span>ケガ：${riskLv}</span><span>体力：${actionStamina(a)}</span>${Object.keys(e.secondary).length ? `<span>補助：${Object.keys(e.secondary).map((k) => PART_LABEL[k as Part]).join('・')}</span>` : ''}</div>
         <div class="ex-f">
           <div class="seg sm">${(Object.keys(VOLUME) as Volume[]).map((v) => `<button class="${vol === v ? 'on' : ''}" data-act="vol" data-ex="${e.id}" data-v="${v}">${VOLUME[v].label.replace(/（(\d+)セット）/, '$1')}</button>`).join('')}</div>
-          <span class="gain">${PART_LABEL[e.part]} ${sgn(g, 2)}</span>
+          <span class="gain">${PART_LABEL[e.part]} +${Math.round(g)}pt</span>
           <button class="primary sm" data-act="add-ex" data-v="${e.id}" ${can.ok ? '' : 'disabled'}>${can.ok ? '追加' : esc(use.ok ? can.reason! : use.reason!)}</button>
         </div>
       </div>`;
@@ -453,6 +491,8 @@ function checks(s: GameState): Check[] {
   const devs = PARTS.map((p) => b.dev[p]);
   const mean = devs.reduce((a, c) => a + c, 0) / 6;
   const weak = PARTS.filter((p) => b.dev[p] < mean - 4);
+  const unspent = raisable(s);
+  if (unspent) out.push({ label: '筋肉ポイント', value: `${unspent}部位で強化できる`, level: 'warn', hint: '使っていない筋肉ポイントは審査に出ない。「筋肉を大きくする」で使う。' });
   out.push({ label: '部位の発達', value: `平均 ${fx(mean)}`, level: weak.length ? 'warn' : 'ok', hint: weak.length ? `${weak.map((p) => PART_LABEL[p]).join('・')}が他より弱い。優先して鍛える。` : undefined });
   out.push({ label: '体脂肪率', value: `${fx(st.bf)}%`, level: st.bf <= 6 ? 'ok' : st.bf <= 8.5 ? 'warn' : 'bad', hint: st.bf > 6 ? '大会の目安は5〜6%前後。減量方針と有酸素運動を見直す。' : st.bf < 3.8 ? '絞りすぎ。張りが失われやすい。' : undefined });
   const cap = cat.weightCap?.(s.player.heightCm);
@@ -562,19 +602,20 @@ function modal(s: GameState | null) {
   if (!ui.modal) return '';
   if (ui.modal === 'report' && s?.lastReport) {
     const r = s.lastReport;
-    const gain = PARTS.reduce((a, p) => a + Math.max(0, r.devDelta[p]), 0);
-    const top = [...PARTS].sort((a, b) => r.devDelta[b] - r.devDelta[a]).slice(0, 4).filter((p) => r.devDelta[p] > 0);
+    const pg = r.ptsGain ?? (Object.fromEntries(PARTS.map((p) => [p, 0])) as Record<Part, number>);
+    const gain = PARTS.reduce((a, p) => a + pg[p], 0);
+    const top = [...PARTS].sort((a, b) => pg[b] - pg[a]).slice(0, 4).filter((p) => pg[p] > 0);
     return `<div class="modal"><div class="sheet report-sheet">
-      ${artFrame(s, 'training', 'rep-art', `<div class="rep-gains">${top.map((p, i) => `<div class="gain" style="--d:${0.15 + i * 0.12}s"><span>${PART_LABEL[p]}</span><b data-count="${r.devDelta[p].toFixed(2)}">+0.00</b></div>`).join('')}</div>${gain > 0.4 ? '<div class="burst">成長!!</div>' : ''}`)}
+      ${artFrame(s, 'training', 'rep-art', `<div class="rep-gains">${top.map((p, i) => `<div class="gain" style="--d:${0.15 + i * 0.12}s"><span>${PART_LABEL[p]}</span><b data-count="${pg[p]}" data-int="1">+0pt</b></div>`).join('')}</div>${gain >= 60 ? '<div class="burst">成長!!</div>' : ''}`)}
       <h3>第${r.week}週の結果</h3>
       ${coachBox(weekLine(s))}
       <div class="rep-nums"><div><span>体重</span><b>${fx(r.weightAfter)}kg</b><em>${sgn(r.weightAfter - r.weightBefore)}</em></div>
       <div><span>体脂肪率</span><b>${fx(r.bfAfter)}%</b><em>${sgn(r.bfAfter - r.bfBefore)}</em></div>
       <div><span>収支</span><b>${yen(s.money)}</b><em>${r.moneyDelta >= 0 ? '+' : ''}${r.moneyDelta.toLocaleString()}</em></div></div>
-      <div class="rep-parts">${PARTS.map((p) => `<span class="${r.devDelta[p] < 0 ? 'neg' : ''}">${PART_LABEL[p]} ${sgn(r.devDelta[p], 2)}</span>`).join('')}</div>
+      <div class="rep-parts">${PARTS.map((p) => `<span>${PART_LABEL[p]} +${pg[p]}pt${r.devDelta[p] < -0.05 ? `<em class="neg"> 筋肉${sgn(r.devDelta[p], 1)}</em>` : ''}</span>`).join('')}</div>
       <ul class="report pg-split">${r.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
       ${s.phase === 'contestDay' ? `<p class="gold-t">${WEEKS}週間の準備が終わった。明日はいよいよ大会。</p>` : ''}
-      <button class="primary big pg-pin" data-act="close-modal">${s.phase === 'contestDay' ? '大会の最終準備へ' : '次の週へ'}</button></div></div>`;
+      <div class="pg-pin pin-row">${raisable(s) ? `<button class="ghost" data-act="report-muscle">筋肉を大きくする</button>` : ''}<button class="primary big" data-act="close-modal">${s.phase === 'contestDay' ? '大会の最終準備へ' : '次の週へ'}</button></div></div></div>`;
   }
   if (ui.modal === 'empty') {
     return `<div class="modal"><div class="sheet"><h3>今週は何も行動していません</h3><p>このまま週を進めますか？</p>
@@ -640,7 +681,8 @@ function modal(s: GameState | null) {
 const HOWTO: { title: string; mood: 'serious' | 'encourage' | 'nervous' | 'achievement'; lines: string[] }[] = [
   { title: '1週間に6回、行動を選ぶ', mood: 'serious', lines: [
     '練習画面のカードを<b>タップするだけ</b>で、その週の予定に入る。',
-    'カードには<b>上がる能力</b>（例：胸 +0.40）と、使う<b>体力</b>・増える<b>疲労</b>・<b>ケガの確率</b>が出ている。',
+    'カードには<b>たまる筋肉ポイント</b>（例：胸 +18pt）と、使う<b>体力</b>・増える<b>疲労</b>・<b>ケガの確率</b>が出ている。',
+    'たまったポイントは<b>筋肉を大きくする</b>画面で、好きな部位に使う。部位のランクは <b>G〜SS</b>。',
     '予定が決まったら「週を終える」。結果がすぐに出る。',
   ] },
   { title: '体力と疲労に気をつける', mood: 'nervous', lines: [
@@ -675,6 +717,7 @@ function render() {
     switch (ui.route) {
       case 'player': body = playerScreen(s); break;
       case 'training': body = trainingScreen(s); break;
+      case 'muscle': body = muscleScreen(s); break;
       case 'diet': body = dietScreen(s); break;
       case 'shop': body = shopScreen(s); break;
       case 'fitting': body = fittingScreen(s); break;
@@ -701,7 +744,7 @@ function render() {
     const t0 = performance.now() + 250 + i * 120;
     const step = (t: number) => {
       const k = Math.min(1, Math.max(0, (t - t0) / 700));
-      el.textContent = `+${(to * (1 - (1 - k) ** 3)).toFixed(2)}`;
+      el.textContent = el.dataset.int ? `+${Math.round(to * (1 - (1 - k) ** 3))}pt` : `+${(to * (1 - (1 - k) ** 3)).toFixed(2)}`;
       if (k < 1) requestAnimationFrame(step);
     };
     requestAnimationFrame(step);
@@ -801,6 +844,10 @@ root.addEventListener('click', (e) => {
       render();
       return;
     }
+    case 'raise': mutate((x) => { raisePart(x, v as Part, 1); }); return;
+    case 'raise-max': mutate((x) => { raisePart(x, v as Part, 999); }); return;
+    case 'raise-all': mutate((x) => { for (const p of PARTS) raisePart(x, p, 999); }); return;
+    case 'report-muscle': ui.modal = null; go('muscle'); return;
     case 'rm': mutate((x) => { x.plan.splice(Number(v), 1); }); return;
     case 'clear-plan': mutate((x) => { x.plan = []; }); return;
     case 'detail': ui.detail = !!v; forgetPages(); render(); return;

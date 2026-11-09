@@ -64,6 +64,8 @@ export interface WeekReport {
   bfBefore: number;
   bfAfter: number;
   devDelta: Record<Part, number>;
+  /** その週に練習で得た筋肉ポイント */
+  ptsGain?: Record<Part, number>;
   moneyDelta: number;
   injury: string | null;
 }
@@ -99,6 +101,8 @@ export interface GameState {
   records?: { season: number; place: number; prize: number; category: Category }[];
   /** 直前のオフで育った分（次のシーズンの最初に見せる） */
   offGain?: Record<Part, number>;
+  /** 部位ごとの筋肉ポイント（練習でたまり、筋肉を大きくする時に使う） */
+  pts?: Record<Part, number>;
 }
 
 // ---- 乱数 ----
@@ -222,27 +226,80 @@ const CAL_ATROPHY: Record<CaloriePlan, number> = { bulk: 0, maintain: 0.04, cutM
 const PROT_GROWTH: Record<MacroPlan, number> = { balanced: 1.0, highProtein: 1.12, highCarb: 0.97 };
 const PROT_ATROPHY: Record<MacroPlan, number> = { balanced: 1.0, highProtein: 0.68, highCarb: 1.08 };
 
-/** 1週間の部位別の発達量の見込み（ランダム要素なし） */
-export function projectGrowth(s: GameState, plan: Action[] = s.plan): Record<Part, number> {
+// ---- 筋肉ポイントとランク ----
+/** 伸びしろ0の時に +1 するのに要るポイント。伸びしろが減るほど必要なポイントは増える */
+export const PT_PER_DEV = 20;
+/** 伸びしろ（発達が100に近いほど小さい） */
+export function potential(dev: number): number {
+  return Math.pow(Math.max(0, 1 - dev / 105), 1.2);
+}
+/** 筋肉を +1 するのに要るポイント */
+export function raiseCost(dev: number): number {
+  return Math.ceil(PT_PER_DEV / Math.max(0.05, potential(dev)));
+}
+export type Rank = 'G' | 'F' | 'E' | 'D' | 'C' | 'B' | 'A' | 'S' | 'SS';
+/** ランクの下限（SS は 99 以上） */
+export const RANKS: [Rank, number][] = [['SS', 99], ['S', 90], ['A', 80], ['B', 70], ['C', 60], ['D', 50], ['E', 40], ['F', 30], ['G', 0]];
+export function rankOf(dev: number): Rank {
+  return RANKS.find(([, min]) => dev >= min)![0];
+}
+/** 次のランクまでの値（SS なら null） */
+export function nextRank(dev: number): { rank: Rank; at: number } | null {
+  const i = RANKS.findIndex(([, min]) => dev >= min);
+  return i > 0 ? { rank: RANKS[i - 1][0], at: RANKS[i - 1][1] } : null;
+}
+export const ptsOf = (s: GameState): Record<Part, number> =>
+  s.pts ?? (Object.fromEntries(PARTS.map((p) => [p, 0])) as Record<Part, number>);
+
+/** 筋肉ポイントを使って、その部位を +1 する（times 回まで）。上がった回数を返す */
+export function raisePart(s: GameState, p: Part, times = 1): number {
+  const pts = { ...ptsOf(s) };
+  let n = 0;
+  while (n < times && s.body.dev[p] < 100) {
+    const c = raiseCost(s.body.dev[p]);
+    if (pts[p] < c) break;
+    pts[p] -= c;
+    s.body.dev[p] = Math.min(100, s.body.dev[p] + 1);
+    n++;
+  }
+  s.pts = pts;
+  return n;
+}
+/** 全部位のポイントを使えるだけ使う */
+export function raiseAll(s: GameState): number {
+  return PARTS.reduce((t, p) => t + raisePart(s, p, 999), 0);
+}
+
+/** 1週間の見込み（ランダム要素なし）：練習で得る筋肉ポイントと、減量などで落ちる筋肉 */
+export function projectWeek(s: GameState, plan: Action[] = s.plan): { pts: Record<Part, number>; loss: Record<Part, number> } {
   const st = stimulusByPart(plan);
   const { bf } = bodyStats(s);
-  const out = {} as Record<Part, number>;
+  const pts = {} as Record<Part, number>;
+  const loss = {} as Record<Part, number>;
   const frameG = (s.player.frame === 'endo' ? 1.05 : s.player.frame === 'ecto' ? 0.95 : 1) * growthRate(s.player, s.week);
   for (const p of PARTS) {
     const stim = st[p];
     const sat = 1 - Math.exp(-stim / 10);
-    const pot = Math.pow(Math.max(0, 1 - s.body.dev[p] / 105), 1.2);
     let nutr = CAL_GROWTH[s.diet.cal] * PROT_GROWTH[s.diet.macro];
     if (bf < 6) nutr *= 0.75;
     const recov = 1 - s.body.fatigue / 160;
     const eff = 1 - Math.max(0, s.body.partFatigue[p] - 55) / 90;
-    let g = 2.6 * sat * pot * nutr * recov * eff * frameG * (s.player.strong === p ? 1.2 : 1);
+    let g = 2.6 * sat * nutr * recov * eff * frameG * (s.player.strong === p ? 1.2 : 1);
     if (stim > 26) g *= Math.max(0.3, 1 - (stim - 26) / 40);
     let atrophy = CAL_ATROPHY[s.diet.cal] * (1 - 0.85 * sat) * PROT_ATROPHY[s.diet.macro];
     if (bf < 5) atrophy += 0.15;
     if (s.body.injury?.part === p) atrophy += 0.35;
-    out[p] = g - atrophy;
+    pts[p] = g * PT_PER_DEV;
+    loss[p] = atrophy;
   }
+  return { pts, loss };
+}
+
+/** 1週間の部位別の発達量の見込み（得たポイントを全部その部位に使った場合。ランダム要素なし） */
+export function projectGrowth(s: GameState, plan: Action[] = s.plan): Record<Part, number> {
+  const w = projectWeek(s, plan);
+  const out = {} as Record<Part, number>;
+  for (const p of PARTS) out[p] = (w.pts[p] / PT_PER_DEV) * potential(s.body.dev[p]) - w.loss[p];
   return out;
 }
 
@@ -338,16 +395,22 @@ export function advanceWeek(s0: GameState): GameState {
   if (available >= nutri.food) moneyDelta -= nutri.food;
   else { lowFood = true; moneyDelta -= Math.max(0, available); lines.push('食費が足りず、節約した食事になった（回復と成長が低下）。'); }
 
-  // 筋肉
-  const growth = projectGrowth(s, plan);
+  // 筋肉：練習で筋肉ポイントがたまる（筋肉を大きくするのは選手が選ぶ）。減量などで落ちる分はそのまま減る
+  const wk = projectWeek(s, plan);
   const devDelta = {} as Record<Part, number>;
+  const ptsGain = {} as Record<Part, number>;
   const oldDev = { ...b.dev };
+  const pts = { ...ptsOf(s) };
   for (const p of PARTS) {
-    let d = growth[p] * (0.85 + nextRand(s) * 0.3);
-    if (lowFood) d = d > 0 ? d * 0.7 : d * 1.2;
-    b.dev[p] = clamp(b.dev[p] + d, 5, 100);
+    let g = wk.pts[p] * (0.85 + nextRand(s) * 0.3);
+    if (lowFood) g *= 0.7;
+    ptsGain[p] = Math.round(g);
+    pts[p] += ptsGain[p];
+    const l = wk.loss[p] * (lowFood ? 1.2 : 1);
+    b.dev[p] = clamp(b.dev[p] - l, 5, 100);
     devDelta[p] = b.dev[p] - oldDev[p];
   }
+  s.pts = pts;
   const leanDelta = leanMass(b.dev, s.player.heightCm, s.player.frame) - leanMass(oldDev, s.player.heightCm, s.player.frame);
 
   // エネルギー収支 → 脂肪
@@ -440,15 +503,17 @@ export function advanceWeek(s0: GameState): GameState {
 
   s.money += moneyDelta;
   const after = bodyStats(s);
+  const psum = (Object.values(ptsGain) as number[]).reduce((x, y) => x + y, 0);
   const msum = (Object.values(devDelta) as number[]).reduce((x, y) => x + y, 0);
-  lines.unshift(`筋肉の発達 合計 ${msum >= 0 ? '+' : ''}${msum.toFixed(1)}／体重 ${(after.weight - before.weight >= 0 ? '+' : '')}${(after.weight - before.weight).toFixed(1)}kg／体脂肪率 ${after.bf.toFixed(1)}%`);
+  if (msum < -0.3) lines.push(`減量で筋肉が少し落ちた（合計 ${msum.toFixed(1)}）。`);
+  lines.unshift(`筋肉ポイント 合計 +${psum}pt／体重 ${(after.weight - before.weight >= 0 ? '+' : '')}${(after.weight - before.weight).toFixed(1)}kg／体脂肪率 ${after.bf.toFixed(1)}%`);
   if (b.fatigue > 70) lines.push('疲労が非常に高い。休養を増やさないと成長が止まり、ケガのリスクも上がる。');
   for (const p of PARTS) if (b.partFatigue[p] > 75) lines.push(`${PART_LABEL[p]}の疲労が抜けていない（成長効率が低下）。`);
   if (b.fullness < 0.72) lines.push('筋肉の張りが落ちている（炭水化物不足）。');
 
   s.lastReport = {
     week: s.week, lines, weightBefore: before.weight, weightAfter: after.weight, bfBefore: before.bf, bfAfter: after.bf,
-    devDelta, moneyDelta, injury: injuryMsg,
+    devDelta, ptsGain, moneyDelta, injury: injuryMsg,
   };
   s.history.push({ week: s.week, weight: after.weight, bf: after.bf, muscle: muscleIndex(b.dev), fatigue: b.fatigue, condition: b.condition });
   // 計画は翌週も引き継ぐ（使えなくなった行動は外す）

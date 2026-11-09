@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { dietAdvice, previewCommand, recommend } from '../src/game/guide';
 import { WEEKS } from '../src/game/data';
-import { advanceWeek, bodyStats, isGameOver, missStreak, newGame, nextSeason, type GameState } from '../src/game/rules';
+import { advanceWeek, raiseAll, bodyStats, isGameOver, missStreak, newGame, nextSeason, type GameState } from '../src/game/rules';
 import { rivalGrowth, runContest } from '../src/game/scoring';
 
 /** 練習も食事もトレーナーのおすすめどおりに準備期間を進めて大会に出る */
@@ -18,6 +18,7 @@ function playSeason(s: GameState): GameState {
       s.plan.push(pv.action);
     }
     s = advanceWeek(s);
+    raiseAll(s);
   }
   s.prep.carbUp = true;
   s.result = runContest(s);

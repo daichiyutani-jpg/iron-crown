@@ -103,7 +103,7 @@ main { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: 
 .stats4 small, .nut small { color: var(--sub); font-weight: 500; margin-left: 2px; }
 .stats4 em { font-size: 10.5px; color: var(--sub); font-style: normal; }
 .parts { display: flex; flex-direction: column; gap: 9px; }
-.prow { display: grid; grid-template-columns: 44px 1fr 40px; align-items: center; gap: 10px; font-size: 14px; }
+.prow { display: grid; grid-template-columns: 26px 38px 1fr 40px; align-items: center; gap: 10px; font-size: 14px; }
 .prow b { text-align: right; }
 .spark { width: 100%; height: 70px; background: var(--panel); border-radius: 8px; }
 .spark-lab { display: flex; justify-content: space-between; font-size: 11px; color: var(--sub); margin-top: 3px; }
@@ -536,3 +536,30 @@ main > .page.paged { flex: 1; padding: 10px 16px 8px; }
 .bgm-btn.off { color: #5d6684; position: relative; }
 .bgm-btn.off::after { content: ''; position: absolute; left: 4px; right: 4px; top: 50%; height: 1.5px; background: #8b95b3; transform: rotate(-45deg); }
 .bgm-title { align-self: center; margin-top: 4px; }
+
+/* ---- 筋肉ポイントとランク ---- */
+.rk { display: inline-grid; place-items: center; min-width: 24px; height: 20px; padding: 0 3px; border-radius: 5px; font-style: normal; font-weight: 900; font-size: 12px; letter-spacing: -.02em; color: #111; background: #8b95b3; }
+.rk-G { background: #5d6684; color: #e8ebf5; } .rk-F { background: #7c86a6; } .rk-E { background: #9fb0d8; } .rk-D { background: #7fd1a8; }
+.rk-C { background: #b8e07a; } .rk-B { background: #f2cf5b; } .rk-A { background: #f39a4a; } .rk-S { background: #ff6b7d; color: #fff; }
+.rk-SS { background: linear-gradient(135deg, #fff2b3, #e8c25a 45%, #b07d14); color: #2a1a00; box-shadow: 0 0 8px rgba(232,194,90,.7); }
+.muscle-line { width: 100%; display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 8px; padding: 5px 6px; margin-bottom: 6px; text-align: left; }
+.muscle-line > span { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px 6px; }
+.muscle-line em { font-style: normal; font-size: 11.5px; display: flex; align-items: center; gap: 3px; white-space: nowrap; }
+.muscle-line em .rk { min-width: 20px; height: 16px; font-size: 10.5px; }
+.muscle-line em small { color: var(--sub); font-size: 10px; }
+.muscle-line > i { font-style: normal; flex: none; font-size: 11.5px; font-weight: 700; padding: 6px 7px; border-radius: 7px; border: 1px solid var(--line); color: var(--sub); }
+.muscle-line.can { border-color: var(--gold); } .muscle-line.can > i { background: var(--gold); color: #111; border-color: var(--gold); }
+.muscle-go { width: 100%; margin: 6px 0 4px; position: relative; }
+.dot { font-style: normal; display: inline-grid; place-items: center; min-width: 18px; height: 18px; margin-left: 6px; border-radius: 9px; background: var(--gold); color: #111; font-size: 11px; font-weight: 800; }
+.mus { display: flex; flex-direction: column; gap: 6px; }
+.mu { border: 1px solid var(--line); background: var(--panel); border-radius: 10px; padding: 7px 9px; display: flex; flex-direction: column; gap: 5px; }
+.mu.can { border-color: rgba(232,194,90,.6); }
+.mu-h { display: flex; align-items: center; gap: 7px; } .mu-h b { font-size: 14.5px; } .mu-v { font-weight: 800; font-size: 15px; }
+.mu-h em { margin-left: auto; font-style: normal; font-size: 11px; color: var(--sub); }
+.mu-h .rk { min-width: 30px; height: 24px; font-size: 14px; }
+.mu-f { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--sub); }
+.mu-f b { color: var(--text); font-size: 13.5px; } .mu-f span:nth-child(2) { margin-right: auto; }
+.mu-f .sm { padding: 6px 10px; }
+.rank-key { display: flex; flex-wrap: wrap; gap: 4px 8px; font-size: 10.5px; color: var(--sub); margin: 8px 0 4px; }
+.rank-key span { display: flex; align-items: center; gap: 3px; } .rank-key .rk { min-width: 20px; height: 16px; font-size: 10px; }
+.rep-parts em.neg { font-style: normal; color: var(--bad); }

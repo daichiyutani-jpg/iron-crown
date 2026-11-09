@@ -2,7 +2,7 @@
 import { PARTS, type Part } from './body';
 import { CALORIE_PLANS, EXERCISES, MACRO_PLANS, PART_LABEL, SLOTS, VOLUME, WEEKS, type CaloriePlan, type MacroPlan, type Volume } from './data';
 import {
-  advanceWeek, bodyStats, canAddAction, canUseExercise, exerciseById, injuryRisk, nutrition, projectGrowth, staminaMax, planStamina, actionStamina,
+  advanceWeek, bodyStats, canAddAction, canUseExercise, exerciseById, injuryRisk, nutrition, projectGrowth, projectWeek, staminaMax, planStamina, actionStamina,
   type Action, type GameState,
 } from './rules';
 import { playerInput, rivalInputs, scoreCompetitor, totalScore } from './scoring';
@@ -80,10 +80,11 @@ export function previewCommand(s: GameState, id: CommandId, base = { g: projectG
   if (a.kind === 'train') {
     const ex = exerciseById(a.ex);
     sub = `${ex.name}・${VOLUME[a.vol].label.replace(/（.*）/, '')}`;
-    const g = projectGrowth(s, plan);
-    const ds = PARTS.map((p) => [p, g[p] - base.g[p]] as const).filter(([, d]) => d >= 0.02).sort((x, y) => y[1] - x[1]);
-    for (const [p, d] of ds.slice(0, 3)) main.push({ label: PART_LABEL[p], value: `+${d.toFixed(2)}`, good: true });
-    if (!main.length) main.push({ label: PART_LABEL[ex.part], value: '+0.00', good: false });
+    const g = projectWeek(s, plan).pts;
+    const b0 = projectWeek(s).pts;
+    const ds = PARTS.map((p) => [p, g[p] - b0[p]] as const).filter(([, d]) => d >= 0.5).sort((x, y) => y[1] - x[1]);
+    for (const [p, d] of ds.slice(0, 3)) main.push({ label: PART_LABEL[p], value: `+${Math.round(d)}pt`, good: true });
+    if (!main.length) main.push({ label: PART_LABEL[ex.part], value: '+0pt', good: false });
   } else if (a.kind === 'posing') {
     sub = '大会のポーズを磨く';
     main.push({ label: 'ポーズ', value: `+${(7.5 * (1 - s.body.posing / 115)).toFixed(1)}`, good: true });

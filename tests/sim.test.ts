@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { advanceWeek, bodyStats, buyItem, buyTrunks, canAddAction, growthRate, newGame, rollPlayer, useItem, type Action, type GameState, type PlayerInfo } from '../src/game/rules';
+import { advanceWeek, raiseAll, bodyStats, buyItem, buyTrunks, canAddAction, growthRate, newGame, rollPlayer, useItem, type Action, type GameState, type PlayerInfo } from '../src/game/rules';
 import { heroStage } from '../src/ui/art';
 import { runContest } from '../src/game/scoring';
 import { WEEKS, type Category } from '../src/game/data';
@@ -33,6 +33,7 @@ function playGood(cat: Category, seed: number, info?: PlayerInfo, onWeek?: (s: G
       if (s.money > 10000) { buyItem(s, 'tanPro'); useItem(s, 'tanPro'); }
     }
     s = advanceWeek(s);
+    raiseAll(s);
     onWeek?.(s);
   }
   if (cat === 'classic') { buyTrunks(s, 'classicMatte:black', 6000); s.trunksEquipped = 'classicMatte:black'; }
@@ -45,7 +46,7 @@ function playGood(cat: Category, seed: number, info?: PlayerInfo, onWeek?: (s: G
 function playLazy(cat: Category, seed: number) {
   let s = newGame({ name: 'テスト', heightCm: 175, frame: 'meso', category: cat, skinTone: 1 }, seed);
   s.diet = { cal: 'bulk', macro: 'balanced' };
-  for (let w = 1; w <= WEEKS; w++) s = advanceWeek(s);
+  for (let w = 1; w <= WEEKS; w++) { s = advanceWeek(s); raiseAll(s); }
   return { s, r: runContest(s) };
 }
 

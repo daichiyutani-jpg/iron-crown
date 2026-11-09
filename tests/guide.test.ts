@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { COMMANDS, dietAdvice, fatigueAfter, planInjury, predictPlace, previewCommand, recommend } from '../src/game/guide';
-import { advanceWeek, bodyStats, newGame, type GameState } from '../src/game/rules';
+import { advanceWeek, raiseAll, bodyStats, newGame, type GameState } from '../src/game/rules';
 import { runContest } from '../src/game/scoring';
 import { WEEKS } from '../src/game/data';
 
@@ -60,6 +60,7 @@ describe('練習のコマンドカード', () => {
           s.plan.push(pv.action);
         }
         s = advanceWeek(s);
+        raiseAll(s);
       }
       s.prep.carbUp = true;
       places.push(runContest(s).playerPlace);

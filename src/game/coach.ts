@@ -1,7 +1,7 @@
 // トレーナー（神崎 真琴）の会話。状態から「表情」と「せりふ」を選ぶだけで、ゲームの数値は変えない。
 import { PARTS } from './body';
 import { PART_LABEL, WEEKS } from './data';
-import { bodyStats, isGameOver, MISS_LIMIT, missStreak, PRIZE_PLACES, type GameState } from './rules';
+import { bodyStats, raiseCost, isGameOver, MISS_LIMIT, missStreak, PRIZE_PLACES, type GameState } from './rules';
 
 export const COACH_NAME = '神崎 真琴';
 export const COACH_ROLE = 'トレーナー・元フィジーク選手';
@@ -35,8 +35,10 @@ export function weekLine(s: GameState): CoachLine {
   const r = s.lastReport;
   if (!r) return introLines(s)[1];
   const left = WEEKS - r.week;
-  const gain = PARTS.reduce((a, p) => a + Math.max(0, r.devDelta[p]), 0);
-  const best = [...PARTS].sort((a, b) => r.devDelta[b] - r.devDelta[a])[0];
+  // 得たポイントを「全部使ったら何伸びるか」に直して判断する
+  const eq = Object.fromEntries(PARTS.map((p) => [p, r.ptsGain ? r.ptsGain[p] / raiseCost(s.body.dev[p]) : Math.max(0, r.devDelta[p])])) as Record<(typeof PARTS)[number], number>;
+  const gain = PARTS.reduce((a, p) => a + eq[p], 0);
+  const best = [...PARTS].sort((a, b) => eq[b] - eq[a])[0];
   const dBf = r.bfAfter - r.bfBefore;
   if (r.injury) return { mood: 'surprised', text: `ケガ…！？ ${r.injury}。無理に追い込まないで、治るまで別の部位を鍛えよう。` };
   if (s.body.fatigue >= 75) return { mood: 'frustrated', text: '疲れが抜けていない。休むのも練習のうち。来週は量を落とそう。' };
