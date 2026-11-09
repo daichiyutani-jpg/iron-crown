@@ -180,7 +180,7 @@ export function planSets(plan: Action[]): number {
 }
 export function canAddAction(s: GameState, a: Action): { ok: boolean; reason?: string } {
   if (s.phase !== 'season') return { ok: false, reason: '準備期間は終了しました' };
-  if (s.plan.length >= SLOTS) return { ok: false, reason: `今週の行動枠（${SLOTS}）がいっぱい` };
+  if (s.plan.length >= SLOTS) return { ok: false, reason: '予定がいっぱい' };
   if (planStamina(s.plan) + actionStamina(a) > staminaMax(s)) return { ok: false, reason: '体力が足りない' };
   if (a.kind === 'train') {
     const c = canUseExercise(s, exerciseById(a.ex));
@@ -295,14 +295,7 @@ export function newGame(info: PlayerInfo, seed = Date.now()): GameState {
       injury: null, posing: info.start?.posing ?? 30, adapt: 0,
     },
     diet: { cal: 'cutMild', macro: 'balanced' },
-    plan: [
-      { kind: 'train', ex: 'bench', vol: 'normal' },
-      { kind: 'train', ex: 'pullup', vol: 'normal' },
-      { kind: 'train', ex: 'squat', vol: 'normal' },
-      { kind: 'train', ex: 'ohp', vol: 'light' },
-      { kind: 'train', ex: 'curl', vol: 'light' },
-      { kind: 'rest' },
-    ],
+    plan: [], // 最初の週は空。週を終えると同じ予定が翌週に残る
     inv: {},
     trunksOwned: ['practice:black'],
     trunksEquipped: 'practice:black',
@@ -315,6 +308,11 @@ export function newGame(info: PlayerInfo, seed = Date.now()): GameState {
   const st = bodyStats(s);
   s.history.push({ week: 0, weight: st.weight, bf: st.bf, muscle: muscleIndex(dev), fatigue: s.body.fatigue, condition: s.body.condition });
   return s;
+}
+
+/** 1回の練習でケガをする確率（週を終えた後の疲労で判定する） */
+export function injuryRisk(ex: Exercise, vol: Volume, fatigue: number, partFatigue: number, cal: CaloriePlan): number {
+  return ex.risk * VOLUME[vol].risk * (1 + fatigue / 45 + partFatigue / 70) * (cal === 'cutHard' ? 1.2 : 1);
 }
 
 // ---- 週を進める ----
@@ -394,7 +392,7 @@ export function advanceWeek(s0: GameState): GameState {
     for (const a of plan) {
       if (a.kind !== 'train') continue;
       const ex = exerciseById(a.ex);
-      const p = ex.risk * VOLUME[a.vol].risk * (1 + b.fatigue / 45 + b.partFatigue[ex.part] / 70) * (s.diet.cal === 'cutHard' ? 1.2 : 1);
+      const p = injuryRisk(ex, a.vol, b.fatigue, b.partFatigue[ex.part], s.diet.cal);
       if (nextRand(s) < p) {
         const weeks = 1 + Math.floor(nextRand(s) * 3);
         b.injury = { part: ex.part, weeks };

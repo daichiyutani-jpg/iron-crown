@@ -7,12 +7,13 @@ import {
 } from '../game/data';
 import {
   actionLabel, actionStamina, advanceWeek, bodyStats, buyItem, buyTrunks, canAddAction, canUseExercise, categoryOf, GROWTH_LABEL, newGame, rollPlayer,
-  nutrition, planStamina, projectGrowth, stageFinish, staminaMax, stimulusByPart, useItem, type Action, type GameState,
+  nutrition, planStamina, projectGrowth, stageFinish, staminaMax, useItem, type Action, type GameState,
 } from '../game/rules';
 import { runContest, trunksLook, trunksViolation } from '../game/scoring';
 import { getState, hasSave, mutate, setState, subscribe } from '../game/store';
 import { COACH_NAME, COACH_ROLE, contestLine, introLines, resultLine, weekLine, type CoachLine } from '../game/coach';
 import { SHOW_STEPS, showHtml } from './show';
+import { COMMAND_LABEL, COMMANDS, fatigueAfter, fatigueLevel, planInjury, predictPlace, previewCommand, recommend, riskLevel, commandAction, type CommandId } from '../game/guide';
 import { forgetPages, paginate } from './pager';
 import { coachArt, heroArt, heroStage, playerArt, rivalArt, STAGE_LABEL, type ArtUse, type Face, type RivalUse } from './art';
 
@@ -23,10 +24,12 @@ const ui = {
   view: 'sheet-front' as ArtUse, // 選手の絵の向き（正面・背面・側面・ポーズ）
   part: 'chest' as Part,
   vol: {} as Record<string, Volume>,
+  detail: false, // 種目を自分で選ぶ画面
+  howtoStep: 0,
   shopTab: 'tan' as 'tan' | 'trunks' | 'cond',
   preview: null as string | null,
   colorPick: {} as Record<string, string>,
-  modal: null as null | 'report' | 'restart' | 'contest' | 'rival' | 'intro' | 'coach',
+  modal: null as null | 'report' | 'restart' | 'contest' | 'rival' | 'intro' | 'coach' | 'howto',
   rival: '',
   introStep: 0,
   show: -1, // 大会演出の段（-1 = 出していない）
@@ -103,7 +106,7 @@ function header(s: GameState) {
     <div class="brand">IRON<span>CROWN</span></div>
     <div class="hstat"><b>${wk}</b><span>${sub}</span></div>
     <div class="hstat"><b>${yen(s.money)}</b><span>所持金</span></div>
-    <div class="hstat fat"><b>${fx(s.body.fatigue, 0)}</b><span>疲労</span>${bar(s.body.fatigue, 100, s.body.fatigue > 65 ? 'warn' : '')}</div>
+    <div class="hstat fat"><b class="fl-${fatigueLevel(s.body.fatigue).cls}">${fatigueLevel(s.body.fatigue).label}</b><span>疲労 ${fx(s.body.fatigue, 0)}</span>${bar(s.body.fatigue, 100, s.body.fatigue > 65 ? 'warn' : '')}</div>
   </header>`;
 }
 const NAV: [Route, string, string][] = [
@@ -231,28 +234,59 @@ function playerScreen(s: GameState) {
 }
 
 // ---- トレーニング ----
+// 1回タップで1行動。カードごとに「上がる能力」「体力」「疲労」「ケガの確率」を見せる
 function trainingScreen(s: GameState) {
+  if (ui.detail) return exerciseScreen(s);
+  const used = planStamina(s.plan);
+  const max = staminaMax(s);
+  const base = { g: projectGrowth(s), f: fatigueAfter(s).fatigue, inj: planInjury(s), n: nutrition(s) };
+  const fl = fatigueLevel(base.f);
+  const inj = base.inj;
+  const rec = recommend(s);
+  const pp = predictPlace(s);
+  const card = (id: CommandId) => {
+    const pv = previewCommand(s, id, base);
+    const on = rec?.id === id;
+    const dis = !pv.ok;
+    const fcls = pv.fatigue <= 0 ? 'ok' : pv.fatigue < 4 ? 'mid' : pv.fatigue < 8 ? 'warn' : 'bad';
+    return `<button class="cmd ${on ? 'rec' : ''} ${dis ? 'dis' : ''}" data-act="cmd" data-v="${id}" ${dis ? 'disabled' : ''}>
+      ${on ? '<i class="rec-b">おすすめ</i>' : ''}
+      <b class="cmd-t">${pv.title}</b><span class="cmd-s">${esc(pv.sub)}</span>
+      <span class="cmd-up">${pv.main.map((m) => `<em class="${m.good ? 'up' : ''}">${m.label}<strong>${m.value}</strong></em>`).join('')}</span>
+      <span class="cmd-f">${dis ? `<em class="bad">${esc(pv.reason ?? '')}</em>` : `<em>体力${pv.stamina}</em>${pv.id !== 'rest' ? `<em class="${fcls}">疲労${sgn(pv.fatigue, 0)}</em>` : ''}${pv.injury > 0.0005 ? `<em class="${riskLevel(pv.injury)}">ケガ${(pv.injury * 100).toFixed(1)}%</em>` : ''}`}</span>
+    </button>`;
+  };
+  return `<div class="page">
+    <div class="t-head"><h2>第${s.week}週の練習 <small>あと${SLOTS - s.plan.length}回えらべる</small></h2><button class="ghost sm" data-act="howto">？ 育て方</button></div>
+    <div class="t-gauges">
+      <div><span>体力 <b>${max - used}</b>/${max}</span>${bar(max - used, max, max - used < 15 ? 'warn' : 'gold')}</div>
+      <div><span>週末の疲労 <b class="fl-${fl.cls}">${fl.label}</b> ${fx(base.f, 0)}</span>${bar(base.f, 100, `fl-${fl.cls}`)}</div>
+      <div class="t-mini"><span>ケガの確率</span><b class="fl-${riskLevel(inj, true)}">${s.body.injury ? '休み中' : `${(inj * 100).toFixed(1)}%`}</b></div>
+      <div class="t-mini"><span>今出たら</span><b>${pp.place}位<small>/${pp.of}</small></b></div>
+    </div>
+    <ol class="slots">${Array.from({ length: SLOTS }, (_, i) => {
+      const a = s.plan[i];
+      return a ? `<li><span>${esc(shortLabel(a))}</span><button class="x" data-act="rm" data-v="${i}" aria-label="取り消す">×</button></li>` : '<li class="empty">空き</li>';
+    }).join('')}</ol>
+    ${s.plan.length ? '<button class="ghost sm clear-btn" data-act="clear-plan">予定をぜんぶ外す</button>' : ''}
+    ${rec ? `<button class="rec-line" data-act="cmd" data-v="${rec.id}"><span class="rl-t"><b>${COACH_NAME.split(' ')[0]}のおすすめ：${COMMAND_LABEL[rec.id]}</b><span>${esc(rec.why)}</span></span><i>＋入れる</i></button>` : ''}
+    <div class="cmds pg-split">${COMMANDS.map(card).join('')}</div>
+    <button class="ghost sm detail-btn" data-act="detail" data-v="1">種目と量を自分で選ぶ</button>
+    ${advanceButton(s)}
+  </div>`;
+}
+function shortLabel(a: Action) {
+  if (a.kind === 'train') { const e = EXERCISES.find((x) => x.id === a.ex)!; return `${PART_LABEL[e.part]}・${e.name.replace(/（.*）/, '')}`; }
+  return COMMAND_LABEL[a.kind];
+}
+// くわしく選ぶ（種目と量を自分で決める）
+function exerciseScreen(s: GameState) {
   const used = planStamina(s.plan);
   const max = staminaMax(s);
   const proj = projectGrowth(s);
-  const stim = stimulusByPart(s.plan);
   const exs = EXERCISES.filter((e) => e.part === ui.part);
   return `<div class="page">
-    <h2>トレーニング計画 <small>第${s.week}週</small></h2>
-    <div class="budget">
-      <div><span>行動枠</span><b>${s.plan.length}/${SLOTS}</b></div>
-      <div class="grow"><span>体力 ${used}/${max}</span>${bar(used, max, used > max * 0.9 ? 'warn' : 'gold')}</div>
-    </div>
-    <ol class="plan">${s.plan.map((a, i) => `<li><span>${esc(actionLabel(a))}</span><em>体力${actionStamina(a)}</em><button class="x" data-act="rm" data-v="${i}" aria-label="削除">×</button></li>`).join('')}
-      ${Array.from({ length: SLOTS - s.plan.length }, () => '<li class="empty">（空き）</li>').join('')}</ol>
-    <div class="other-actions">
-      ${([['posing', 'ポージング練習', '完成度↑ 体力10'], ['cardio', '有酸素運動', '消費+320kcal 体力12'], ['rest', '完全休養', '疲労回復↑ 体力0'], ['work', '追加シフト', '+¥12,000 体力16']] as const)
-        .map(([k, l, d]) => `<button class="mini" data-act="add-other" data-v="${k}"><b>${l}</b><span>${d}</span></button>`).join('')}
-    </div>
-    <h3>今週の計画での見込み（部位別）</h3>
-    <div class="proj">${PARTS.map((p) => `<div class="${proj[p] < 0 ? 'neg' : ''}"><span>${PART_LABEL[p]}</span><b>${sgn(proj[p], 2)}</b><em>${fx(stim[p], 0)}セット相当</em><i class="pf" style="--v:${s.body.partFatigue[p]}%"></i></div>`).join('')}</div>
-    <p class="hint">刺激は週10〜18セットが目安。同じ部位をやりすぎると疲労で効率が落ち、ケガのリスクも上がります。減量中は刺激を保つと筋肉が落ちにくくなります。各部位の下線は部位の疲労。</p>
-    <h3>種目を追加</h3>
+    <div class="t-head"><h2>種目を選ぶ <small>体力 ${max - used}/${max}・あと${SLOTS - s.plan.length}回</small></h2><button class="ghost sm" data-act="detail" data-v="">‹ もどる</button></div>
     <div class="tabs">${PARTS.map((p) => `<button class="${ui.part === p ? 'on' : ''}" data-act="part" data-v="${p}">${PART_LABEL[p]}${s.body.injury?.part === p ? '⚠' : ''}</button>`).join('')}</div>
     <div class="exlist pg-split">${exs.map((e) => {
       const vol = ui.vol[e.id] ?? 'normal';
@@ -263,7 +297,7 @@ function trainingScreen(s: GameState) {
       const riskLv = e.risk >= 0.018 ? '高' : e.risk >= 0.01 ? '中' : '低';
       const fatLv = e.fatigue >= 1.3 ? '大' : e.fatigue >= 0.85 ? '中' : '小';
       return `<div class="ex ${use.ok ? '' : 'dis'}">
-        <div class="ex-h"><b>${e.name}</b>${e.unilateral ? '<span class="tag">片側種目</span>' : ''}</div>
+        <div class="ex-h"><b>${e.name}</b>${e.unilateral ? '<span class="tag">左右差が整う</span>' : ''}</div>
         <p>${e.note}</p>
         <div class="ex-tags"><span>設備：${e.equip.length ? e.equip.map((q) => EQUIP_LABEL[q]).join('・') : 'なし'}</span><span>疲労：${fatLv}</span><span>ケガ：${riskLv}</span><span>体力：${actionStamina(a)}</span>${Object.keys(e.secondary).length ? `<span>補助：${Object.keys(e.secondary).map((k) => PART_LABEL[k as Part]).join('・')}</span>` : ''}</div>
         <div class="ex-f">
@@ -525,6 +559,16 @@ function modal(s: GameState | null) {
       <div class="co-say big"><b>${COACH_NAME}<small>${COACH_ROLE}</small></b><p>${esc(l.text)}</p></div>
       <button class="primary big pg-pin" data-act="${last ? 'close-modal' : 'intro-next'}">${last ? 'はじめる' : '次へ'}</button></div></div>`;
   }
+  if (ui.modal === 'howto') {
+    const step = HOWTO[Math.min(ui.howtoStep, HOWTO.length - 1)];
+    const last = ui.howtoStep >= HOWTO.length - 1;
+    const url = coachArt(step.mood);
+    return `<div class="modal"><div class="sheet howto-sheet">
+      <div class="howto-n">${HOWTO.map((_, i) => `<i class="${i === ui.howtoStep ? 'on' : ''}"></i>`).join('')}</div>
+      <h3>${step.title}</h3>
+      <div class="howto-body">${url ? `<div class="art howto-art"><img src="${url}" alt="" decoding="async"></div>` : ''}<ul>${step.lines.map((l) => `<li>${l}</li>`).join('')}</ul></div>
+      <div class="pg-pin pin-row"><button class="ghost" data-act="close-modal">とじる</button><button class="primary big" data-act="${last ? 'close-modal' : 'howto-next'}">${last ? '練習をはじめる' : '次へ'}</button></div></div></div>`;
+  }
   if (ui.modal === 'coach') {
     const pics = ['sheet-front', 'sheet-back', 'sheet-side'].map((k) => coachArt(k)).filter(Boolean) as string[];
     const faces = (['serious', 'encourage', 'surprised', 'frustrated', 'achievement', 'nervous', 'joy'] as const).map((k) => coachArt(k)).filter(Boolean) as string[];
@@ -552,6 +596,30 @@ function modal(s: GameState | null) {
   }
   return '';
 }
+
+// 育て方の説明（4枚）
+const HOWTO: { title: string; mood: 'serious' | 'encourage' | 'nervous' | 'achievement'; lines: string[] }[] = [
+  { title: '1週間に6回、行動を選ぶ', mood: 'serious', lines: [
+    '練習画面のカードを<b>タップするだけ</b>で、その週の予定に入る。',
+    'カードには<b>上がる能力</b>（例：胸 +0.40）と、使う<b>体力</b>・増える<b>疲労</b>・<b>ケガの確率</b>が出ている。',
+    '予定が決まったら「週を終える」。結果がすぐに出る。',
+  ] },
+  { title: '体力と疲労に気をつける', mood: 'nervous', lines: [
+    '体力が足りないカードは選べない。<b>疲労が多いと体力の上限も下がる</b>。',
+    '疲労が「疲れ気味」「限界」になると<b>伸びが落ち、ケガが増える</b>。',
+    '<b>休養</b>を1回入れると疲労が大きく下がる。迷ったら金色の<b>おすすめ</b>を選べばいい。',
+  ] },
+  { title: 'まんべんなく育てる', mood: 'encourage', lines: [
+    '同じ部位ばかりだと、その部位が疲れて伸びが落ちる。<b>週に6部位を回す</b>のが基本。',
+    '遅れている部位は審査の「バランス」で減点される。',
+    'ケガをした部位は治るまで鍛えられない。',
+  ] },
+  { title: '大会は12週後', mood: 'achievement', lines: [
+    '審査は<b>筋肉・絞り（体脂肪）・ポーズ・肌</b>など。上の「今出たら◯位」が今の実力。',
+    '体脂肪は<b>食事</b>画面の減量と<b>有酸素</b>で落とす。後半は<b>ポーズ練習</b>も毎週。',
+    'お金が足りない時は<b>バイト</b>。ジムのパスや日焼け用品はショップで買える。',
+  ] },
+];
 
 // ---- 描画 ----
 function render() {
@@ -597,6 +665,9 @@ function render() {
 function go(r: Route) {
   forgetPages();
   if (r !== 'fitting') ui.preview = null;
+  if (r !== 'training') ui.detail = false;
+  // 初めて練習画面を開いた時は育て方を見せる
+  if (r === 'training' && !ui.modal && !localStorage.getItem('ic-howto')) { localStorage.setItem('ic-howto', '1'); ui.howtoStep = 0; ui.modal = 'howto'; }
   ui.route = r;
   render();
 }
@@ -649,6 +720,8 @@ root.addEventListener('click', (e) => {
     case 'rival': ui.rival = v; ui.modal = 'rival'; render(); return;
     case 'coach': ui.modal = 'coach'; render(); return;
     case 'intro-next': ui.introStep++; render(); return;
+    case 'howto': ui.howtoStep = 0; ui.modal = 'howto'; render(); return;
+    case 'howto-next': ui.howtoStep++; render(); return;
   }
   if (!s) return;
   switch (act) {
@@ -660,6 +733,17 @@ root.addEventListener('click', (e) => {
       return;
     }
     case 'rm': mutate((x) => { x.plan.splice(Number(v), 1); }); return;
+    case 'clear-plan': mutate((x) => { x.plan = []; }); return;
+    case 'detail': ui.detail = !!v; forgetPages(); render(); return;
+    case 'cmd': {
+      const a = commandAction(s, v as CommandId);
+      if (!a) return;
+      const c = canAddAction(s, a);
+      if (!c.ok) { toast(c.reason!, true); return; }
+      mutate((x) => { x.plan.push(a); });
+      toast(`${shortLabel(a)} を入れた`);
+      return;
+    }
     case 'part': ui.part = v as Part; render(); return;
     case 'vol': ui.vol[el.dataset.ex!] = v as Volume; render(); return;
     case 'add-ex': {
