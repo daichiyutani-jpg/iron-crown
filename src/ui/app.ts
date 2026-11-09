@@ -13,6 +13,7 @@ import { runContest, trunksLook, trunksViolation } from '../game/scoring';
 import { getState, hasSave, mutate, setState, subscribe } from '../game/store';
 import { COACH_NAME, COACH_ROLE, contestLine, introLines, resultLine, weekLine, type CoachLine } from '../game/coach';
 import { SHOW_STEPS, showHtml } from './show';
+import { forgetPages, paginate } from './pager';
 import { coachArt, heroArt, heroStage, rivalArt, STAGE_LABEL, type ArtUse, type RivalUse, type Stage } from './art';
 
 type Route = 'title' | 'create' | 'player' | 'training' | 'diet' | 'shop' | 'fitting' | 'contest' | 'result';
@@ -114,10 +115,10 @@ function nav() {
 }
 function advanceButton(s: GameState) {
   if (s.phase === 'season') {
-    return `<button class="primary big" data-act="advance">第${s.week}週を終える（週を進める）</button>`;
+    return `<button class="primary big pg-pin" data-act="advance">第${s.week}週を終える（週を進める）</button>`;
   }
-  if (s.phase === 'contestDay') return `<button class="primary big" data-act="go" data-v="contest">大会の最終準備へ</button>`;
-  return `<button class="primary big" data-act="go" data-v="result">大会結果を見る</button>`;
+  if (s.phase === 'contestDay') return `<button class="primary big pg-pin" data-act="go" data-v="contest">大会の最終準備へ</button>`;
+  return `<button class="primary big pg-pin" data-act="go" data-v="result">大会結果を見る</button>`;
 }
 
 // ---- タイトル・選手作成 ----
@@ -164,8 +165,7 @@ function createScreen() {
     <div class="field">肌の色（地の色）
       <div class="seg skin">${['#e8bfa0', '#cf9a76', '#9c6a4a'].map((col, i) => `<button class="${c.skinTone === i ? 'on' : ''}" data-act="c-skin" data-v="${i}"><i style="background:${col}"></i>${['明るめ', '標準', '濃いめ'][i]}</button>`).join('')}</div>
     </div>
-    <button class="primary big" data-act="start">この選手で始める</button>
-    <button class="ghost" data-act="go-title">戻る</button>
+    <div class="pg-pin pin-row"><button class="ghost" data-act="go-title">戻る</button><button class="primary big" data-act="start">この選手で始める</button></div>
   </div>`;
 }
 
@@ -197,9 +197,6 @@ function playerScreen(s: GameState) {
       </div>
     </div>
     ${coachBox(weekLine(s), true)}
-    <details class="sheets"><summary>体の資料（正面・背面・側面）</summary>
-      <div>${(['sheet-front', 'sheet-back', 'sheet-side'] as ArtUse[]).map((u) => { const url = heroArt(heroStage(s), u); return url ? `<img src="${url}" alt="" loading="lazy">` : ''; }).join('')}</div>
-    </details>
     <h3>ライバル <small>タップで詳しく</small></h3>
     ${rivalStrip()}
     <div class="stats4">
@@ -210,14 +207,14 @@ function playerScreen(s: GameState) {
     </div>
     ${b.injury ? `<div class="alert">負傷中：${PART_LABEL[b.injury.part]}（あと${b.injury.weeks}週）</div>` : ''}
     <h3>部位別の発達</h3>
-    <div class="parts">${PARTS.map((p) => `<div class="prow"><span>${PART_LABEL[p]}</span>${bar(b.dev[p])}<b>${fx(b.dev[p])}</b></div>`).join('')}</div>
+    <div class="parts pg-split">${PARTS.map((p) => `<div class="prow"><span>${PART_LABEL[p]}</span>${bar(b.dev[p])}<b>${fx(b.dev[p])}</b></div>`).join('')}</div>
     <div class="kv"><span>左右差</span><b>${fx(Math.abs(b.imbalance))}%（${b.imbalance >= 0 ? '左' : '右'}側が大きい）</b></div>
     <div class="kv"><span>筋肉の張り</span><b>${fx(b.fullness * 100, 0)}%</b></div>
     <div class="kv"><span>ポージング完成度</span><b>${fx(b.posing, 0)}</b></div>
     <div class="kv"><span>肌の色の濃さ／色ムラ</span><b>${fx(s.tan.level, 0)}／${fx(s.tan.uneven, 0)}</b></div>
     <h3>体重の推移</h3>${sparkline(s, 'weight', '#d8d8dc')}
     <h3>体脂肪率の推移</h3>${sparkline(s, 'bf', '#c9a54a')}
-    ${s.lastReport ? `<h3>先週の結果</h3><ul class="report">${s.lastReport.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : ''}
+    ${s.lastReport ? `<h3>先週の結果</h3><ul class="report pg-split">${s.lastReport.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : ''}
     ${advanceButton(s)}
   </div>`;
 }
@@ -246,7 +243,7 @@ function trainingScreen(s: GameState) {
     <p class="hint">刺激は週10〜18セットが目安。同じ部位をやりすぎると疲労で効率が落ち、ケガのリスクも上がります。減量中は刺激を保つと筋肉が落ちにくくなります。各部位の下線は部位の疲労。</p>
     <h3>種目を追加</h3>
     <div class="tabs">${PARTS.map((p) => `<button class="${ui.part === p ? 'on' : ''}" data-act="part" data-v="${p}">${PART_LABEL[p]}${s.body.injury?.part === p ? '⚠' : ''}</button>`).join('')}</div>
-    <div class="exlist">${exs.map((e) => {
+    <div class="exlist pg-split">${exs.map((e) => {
       const vol = ui.vol[e.id] ?? 'normal';
       const a: Action = { kind: 'train', ex: e.id, vol };
       const can = canAddAction(s, a);
@@ -278,12 +275,12 @@ function dietScreen(s: GameState) {
   return `<div class="page">
     <h2>食事・コンディション</h2>
     <h3>摂取カロリーの方針</h3>
-    <div class="opts">${(Object.keys(CALORIE_PLANS) as CaloriePlan[]).map((k) => {
+    <div class="opts pg-split">${(Object.keys(CALORIE_PLANS) as CaloriePlan[]).map((k) => {
       const c = CALORIE_PLANS[k];
       return `<button class="card-opt ${s.diet.cal === k ? 'on' : ''}" data-act="cal" data-v="${k}"><b>${c.label}<em>${c.offset > 0 ? '+' : ''}${c.offset}kcal/日</em></b><span>${c.note}</span></button>`;
     }).join('')}</div>
     <h3>栄養バランス</h3>
-    <div class="opts">${(Object.keys(MACRO_PLANS) as MacroPlan[]).map((k) => {
+    <div class="opts pg-split">${(Object.keys(MACRO_PLANS) as MacroPlan[]).map((k) => {
       const m = MACRO_PLANS[k];
       return `<button class="card-opt ${s.diet.macro === k ? 'on' : ''}" data-act="macro" data-v="${k}"><b>${m.label}</b><span>${m.note}</span></button>`;
     }).join('')}</div>
@@ -305,7 +302,7 @@ function dietScreen(s: GameState) {
     <div class="kv"><span>筋肉の張り</span><b>${fx(b.fullness * 100, 0)}%</b></div>${bar(b.fullness, 1.15, 'gold')}
     <div class="kv"><span>体力の上限（今週）</span><b>${staminaMax(s)}</b></div>
     <h3>部位の疲労</h3>
-    <div class="parts">${PARTS.map((p) => `<div class="prow"><span>${PART_LABEL[p]}</span>${bar(b.partFatigue[p], 100, b.partFatigue[p] > 70 ? 'warn' : '')}<b>${fx(b.partFatigue[p], 0)}</b></div>`).join('')}</div>
+    <div class="parts pg-split">${PARTS.map((p) => `<div class="prow"><span>${PART_LABEL[p]}</span>${bar(b.partFatigue[p], 100, b.partFatigue[p] > 70 ? 'warn' : '')}<b>${fx(b.partFatigue[p], 0)}</b></div>`).join('')}</div>
     ${b.injury ? `<div class="alert">負傷中：${PART_LABEL[b.injury.part]}（あと${b.injury.weeks}週。この部位の種目は選べません）</div>` : ''}
     ${(['massage', 'posingLesson'] as const).map((id) => itemUseRow(s, id)).join('')}
     ${advanceButton(s)}
@@ -343,13 +340,13 @@ function shopScreen(s: GameState) {
       <p>${t.desc}</p>
       <div class="swatches">${t.colors.map((c) => `<button class="sw ${c.id === cid ? 'on' : ''}" data-act="swatch" data-m="${t.id}" data-v="${c.id}" title="${c.name}"><i style="background:${c.color}"></i><i style="background:${c.accent}"></i></button>`).join('')}<span>${t.colors.find((c) => c.id === cid)!.name}</span></div>
       <p class="${viol ? 'bad' : 'ok'}">${viol ? `⚠ ${CATEGORIES[s.player.category].short}部門の規定外：${viol}` : `✓ ${CATEGORIES[s.player.category].short}部門の規定に適合`}</p>
-      <div class="item-f"><button class="ghost sm" data-act="try" data-v="${key}">3Dで試着</button>
+      <div class="item-f"><button class="ghost sm" data-act="try" data-v="${key}">試着</button>
       ${owned ? '<span class="own">購入済み</span>' : `<button class="primary sm" data-act="buy-trunks" data-v="${key}" ${s.money < t.price ? 'disabled' : ''}>${s.money < t.price ? '所持金不足' : '購入'}</button>`}</div></div>`;
   }).join('');
   return `<div class="page">
     <h2>ショップ <small>所持金 ${yen(s.money)}</small></h2>
     <div class="tabs">${([['tan', '日焼け用品'], ['trunks', '大会用衣装'], ['cond', 'コンディション']] as const).map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-act="shop-tab" data-v="${k}">${l}</button>`).join('')}</div>
-    <div class="items">${body}</div>
+    <div class="items pg-split">${body}</div>
   </div>`;
 }
 
@@ -373,7 +370,7 @@ function fittingScreen(s: GameState) {
     <p class="hint">大会のステージでは、照明に負けない濃い色（目安85）と均一さが求められます。セルフタンニングで2〜3週前から下地を作り、前日に大会用カラーを重ねると仕上がりが安定します。スクラブを先に使うとムラが減ります。現在の持ち物で大会に出た場合の予想：色の濃さ ${fx(fin.level, 0)}・色ムラ ${fx(fin.uneven, 0)}。</p>
     ${['scrub', 'tanBasic', 'tanPro', 'lotion'].map((id) => itemUseRow(s, id)).join('')}
     <h3>所有している衣装</h3>
-    <div class="owned">${s.trunksOwned.map((k) => {
+    <div class="owned pg-split">${s.trunksOwned.map((k) => {
       const [mid, cid] = k.split(':');
       const m = TRUNKS.find((t) => t.id === mid)!;
       const c = m.colors.find((x) => x.id === cid)!;
@@ -424,23 +421,23 @@ function contestScreen(s: GameState) {
     <div class="contest-card"><b>${CONTEST.name}</b><span>${cat.name}／出場 6名／優勝賞金 ${yen(CONTEST.prize[0])}</span>
       <span>${s.phase === 'season' ? `本番まで残り${WEEKS - s.week + 1}週（第${WEEKS}週を終えると大会前日）` : isDay ? '明日が本番' : '大会終了'}</span></div>
     <h3>仕上がりチェック</h3>
-    <div class="checks">${cs.map((c) => `<div class="chk lv-${c.level}"><i></i><span>${c.label}</span><b>${c.value}</b>${c.hint ? `<p>${c.hint}</p>` : ''}</div>`).join('')}</div>
+    <div class="checks pg-split">${cs.map((c) => `<div class="chk lv-${c.level}"><i></i><span>${c.label}</span><b>${c.value}</b>${c.hint ? `<p>${c.hint}</p>` : ''}</div>`).join('')}</div>
     <p class="hint">警告があっても出場はできます。準備不足の程度に応じて採点に影響します。</p>
     <h3>採点の比重（${cat.short}部門）</h3>
-    <div class="weights">${(Object.keys(cat.weights) as ScoreKey[]).map((k) => `<div><span>${SCORE_LABEL[k]}</span>${bar(cat.weights[k], 0.3, 'gold')}<b>${Math.round(cat.weights[k] * 100)}%</b></div>`).join('')}</div>
+    <div class="weights pg-split">${(Object.keys(cat.weights) as ScoreKey[]).map((k) => `<div><span>${SCORE_LABEL[k]}</span>${bar(cat.weights[k], 0.3, 'gold')}<b>${Math.round(cat.weights[k] * 100)}%</b></div>`).join('')}</div>
     ${isDay ? `<h3>当日の仕上げ</h3>
       ${prepRow('color', '大会用ボディカラーを塗る', '色の濃さを大きく上げる（下地と肌の状態でムラが変わる）', 'compColor')}
       ${prepRow('gloss', 'ポージング・グロスを塗る', '照明下で筋肉の陰影を見せるツヤ', 'gloss')}
       ${prepRow('carbUp', 'カーボアップ', '炭水化物を増やして筋肉の張りを戻す（疲労が高いと効果が小さい）')}
       <h3>衣装</h3>
-      <div class="owned">${s.trunksOwned.map((k) => {
+      <div class="owned pg-split">${s.trunksOwned.map((k) => {
         const [mid, cid] = k.split(':');
         const m = TRUNKS.find((t) => t.id === mid)!;
         const c = m.colors.find((x) => x.id === cid)!;
         const v = trunksViolation(k, s.player.category);
         return `<button class="own-t ${k === s.trunksEquipped ? 'on' : ''}" data-act="equip" data-v="${k}"><i style="background:${c.color};border-color:${c.accent}"></i><b>${m.name}</b><span>${c.name}</span>${v ? '<em class="bad">規定外</em>' : '<em class="ok">適合</em>'}${k === s.trunksEquipped ? '<strong>装備中</strong>' : ''}</button>`;
       }).join('')}</div>
-      <button class="primary big gold" data-act="compete">大会に出場する</button>` : s.phase === 'season' ? advanceButton(s) : advanceButton(s)}
+      <button class="primary big gold pg-pin" data-act="compete">大会に出場する</button>` : s.phase === 'season' ? advanceButton(s) : advanceButton(s)}
   </div>`;
 }
 
@@ -458,26 +455,25 @@ function resultScreen(s: GameState) {
   const me = r.ranking.find((c) => c.isPlayer)!;
   const other = r.ranking.find((c) => c.name === r.compareWith)!;
   const keys = Object.keys(SCORE_LABEL) as ScoreKey[];
-  return `${viewerBlock(s)}
-  <div class="page">
+  return `<div class="page">
     ${artFrame(heroStage(s), r.playerPlace === 1 ? 'win' : 'contest', 'result-art', r.playerPlace === 1 ? '<div class="burst win">優勝!!</div>' : '')}
     <div class="place"><span>${CATEGORIES[r.category].name}</span><b>${r.playerPlace}<small>位</small></b><em>${r.playerPlace === 1 ? '優勝 ─ IRON CROWN 獲得' : `${r.ranking.length}名中`}</em>${r.prize ? `<strong>賞金 ${yen(r.prize)}</strong>` : ''}</div>
     ${coachBox(resultLine(s))}
     <button class="ghost replay" data-act="show-replay">▶ 大会の様子をもう一度見る</button>
     ${winnerCard(r)}
     <h3>順位</h3>
-    <ol class="rank">${r.ranking.map((c) => `<li class="${c.isPlayer ? 'me' : ''}"><i>${c.place}</i><span>${c.isPlayer ? '' : rivalFace(rivalByName(c.name)?.id ?? '')}${esc(c.name)}</span><em>${fx(c.weight)}kg・${fx(c.bodyFat)}%</em><b>${fx(c.total, 1)}</b></li>`).join('')}</ol>
+    <ol class="rank pg-split">${r.ranking.map((c) => `<li class="${c.isPlayer ? 'me' : ''}"><i>${c.place}</i><span>${c.isPlayer ? '' : rivalFace(rivalByName(c.name)?.id ?? '')}${esc(c.name)}</span><em>${fx(c.weight)}kg・${fx(c.bodyFat)}%</em><b>${fx(c.total, 1)}</b></li>`).join('')}</ol>
     <h3>評価内訳（あなた vs ${esc(r.compareWith)}）</h3>
-    <div class="cmp">${keys.map((k) => {
+    <div class="cmp pg-split">${keys.map((k) => {
       const d = me.scores[k] - other.scores[k];
       return `<div><span>${SCORE_LABEL[k]}</span><b>${fx(me.scores[k], 0)}</b><em class="${d >= 0 ? 'ok' : 'bad'}">${sgn(d, 0)}</em><i>${fx(other.scores[k], 0)}</i></div>`;
     }).join('')}</div>
     ${r.notes.length ? `<div class="alert">${r.notes.map(esc).join('<br>')}</div>` : ''}
-    <h3>良かった点</h3><ul class="report">${r.good.length ? r.good.map((g) => `<li>${esc(g)}</li>`).join('') : '<li>ライバルを上回った項目はなかった。</li>'}</ul>
-    <h3>次回の改善点</h3><ul class="report">${r.improve.map((g) => `<li>${esc(g)}</li>`).join('')}</ul>
+    <h3>良かった点</h3><ul class="report pg-split">${r.good.length ? r.good.map((g) => `<li>${esc(g)}</li>`).join('') : '<li>ライバルを上回った項目はなかった。</li>'}</ul>
+    <h3>次回の改善点</h3><ul class="report pg-split">${r.improve.map((g) => `<li>${esc(g)}</li>`).join('')}</ul>
     <h3>ライバル</h3>
     ${rivalStrip()}
-    <button class="primary big" data-act="restart">新しい選手で再挑戦</button>
+    <button class="primary big pg-pin" data-act="restart">新しい選手で再挑戦</button>
   </div>`;
 }
 
@@ -496,17 +492,17 @@ function modal(s: GameState | null) {
       <div><span>体脂肪率</span><b>${fx(r.bfAfter)}%</b><em>${sgn(r.bfAfter - r.bfBefore)}</em></div>
       <div><span>収支</span><b>${yen(s.money)}</b><em>${r.moneyDelta >= 0 ? '+' : ''}${r.moneyDelta.toLocaleString()}</em></div></div>
       <div class="rep-parts">${PARTS.map((p) => `<span class="${r.devDelta[p] < 0 ? 'neg' : ''}">${PART_LABEL[p]} ${sgn(r.devDelta[p], 2)}</span>`).join('')}</div>
-      <ul class="report">${r.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
+      <ul class="report pg-split">${r.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
       ${s.phase === 'contestDay' ? '<p class="gold-t">12週間の準備が終わった。明日はいよいよ大会。</p>' : ''}
-      <button class="primary big" data-act="close-modal">${s.phase === 'contestDay' ? '大会の最終準備へ' : '次の週へ'}</button></div></div>`;
+      <button class="primary big pg-pin" data-act="close-modal">${s.phase === 'contestDay' ? '大会の最終準備へ' : '次の週へ'}</button></div></div>`;
   }
   if (ui.modal === 'restart') {
     return `<div class="modal"><div class="sheet"><h3>新しい選手で始めますか？</h3><p>現在の選手のセーブデータは消えます。</p>
-      <button class="primary big" data-act="confirm-restart">新しい選手を作る</button><button class="ghost" data-act="close-modal">やめる</button></div></div>`;
+      <div class="pg-pin pin-row"><button class="ghost" data-act="close-modal">やめる</button><button class="primary big" data-act="confirm-restart">新しい選手を作る</button></div></div></div>`;
   }
   if (ui.modal === 'contest') {
     return `<div class="modal"><div class="sheet">${s ? artFrame(heroStage(s), 'contest', 'modal-art') : ''}<h3>大会に出場しますか？</h3>${s ? coachBox(contestLine(s)) : ''}<div class="lineup">${RIVALS.map((r) => rivalFace(r.id)).join('')}<span>ほか5名と競う</span></div><p>出場すると準備内容は変更できません。</p>
-      <button class="primary big gold" data-act="confirm-compete">出場する</button><button class="ghost" data-act="close-modal">準備に戻る</button></div></div>`;
+      <div class="pg-pin pin-row"><button class="ghost" data-act="close-modal">準備に戻る</button><button class="primary big gold" data-act="confirm-compete">出場する</button></div></div></div>`;
   }
   if (ui.modal === 'intro' && s) {
     const lines = introLines(s);
@@ -516,7 +512,7 @@ function modal(s: GameState | null) {
     return `<div class="modal"><div class="sheet intro-sheet">
       ${url ? `<div class="art intro-art"><img src="${url}" alt="" decoding="async"></div>` : ''}
       <div class="co-say big"><b>${COACH_NAME}<small>${COACH_ROLE}</small></b><p>${esc(l.text)}</p></div>
-      <button class="primary big" data-act="${last ? 'close-modal' : 'intro-next'}">${last ? 'はじめる' : '次へ'}</button></div></div>`;
+      <button class="primary big pg-pin" data-act="${last ? 'close-modal' : 'intro-next'}">${last ? 'はじめる' : '次へ'}</button></div></div>`;
   }
   if (ui.modal === 'coach') {
     const pics = ['sheet-front', 'sheet-back', 'sheet-side'].map((k) => coachArt(k)).filter(Boolean) as string[];
@@ -525,9 +521,9 @@ function modal(s: GameState | null) {
       ${coachArt('serious') ? `<div class="art modal-art"><img src="${coachArt('serious')}" alt=""></div>` : ''}
       <h3>${COACH_NAME}</h3><p class="meta">${COACH_ROLE}</p>
       <p>あなたの担当トレーナー。厳しいが、結果はいつも一緒に受け止めてくれる。週の結果や大会でアドバイスをくれる。</p>
-      ${faces.length ? `<details class="sheets"><summary>表情</summary><div class="co-faces">${faces.map((u) => `<img src="${u}" alt="" loading="lazy">`).join('')}</div></details>` : ''}
-      ${pics.length ? `<details class="sheets"><summary>デザイン資料（正面・背面・側面）</summary><div>${pics.map((u) => `<img src="${u}" alt="" loading="lazy">`).join('')}</div></details>` : ''}
-      <button class="ghost" data-act="close-modal">閉じる</button></div></div>`;
+      ${faces.length ? `<h4 class="th-h">表情</h4><div class="thumbs">${faces.map((u) => `<img src="${u}" alt="" decoding="async">`).join('')}</div>` : ''}
+      ${pics.length ? `<h4 class="th-h">デザイン資料（正面・背面・側面）</h4><div class="thumbs">${pics.map((u) => `<img src="${u}" alt="" decoding="async">`).join('')}</div>` : ''}
+      <button class="ghost big pg-pin" data-act="close-modal">閉じる</button></div></div>`;
   }
   if (ui.modal === 'rival') {
     const r = RIVALS.find((x) => x.id === ui.rival);
@@ -540,8 +536,8 @@ function modal(s: GameState | null) {
       <p>${esc(r.style)}</p>
       <div class="kv"><span>得意な部位</span><b>${PART_LABEL[top[0]]}・${PART_LABEL[top[1]]}</b></div>
       <div class="kv"><span>弱い部位</span><b>${PART_LABEL[top[top.length - 1]]}</b></div>
-      ${pics.length ? `<details class="sheets"><summary>大会のポーズと体の資料</summary><div class="rv-pics">${pics.map((u) => `<img src="${u}" alt="" loading="lazy">`).join('')}</div></details>` : ''}
-      <button class="ghost" data-act="close-modal">閉じる</button></div></div>`;
+      ${pics.length ? `<h4 class="th-h">大会のポーズと体の資料</h4><div class="thumbs">${pics.map((u) => `<img src="${u}" alt="" decoding="async">`).join('')}</div>` : ''}
+      <button class="ghost big pg-pin" data-act="close-modal">閉じる</button></div></div>`;
   }
   return '';
 }
@@ -549,8 +545,6 @@ function modal(s: GameState | null) {
 // ---- 描画 ----
 function render() {
   const s = getState();
-  const scroller = document.querySelector('main');
-  const scroll = scroller ? scroller.scrollTop : 0;
   if (!s && !['title', 'create'].includes(ui.route)) ui.route = 'title';
   if (s?.phase === 'done' && ['training', 'diet'].includes(ui.route)) ui.route = 'result';
   let html = '';
@@ -582,17 +576,18 @@ function render() {
     requestAnimationFrame(step);
   });
   root.className = ui.route === 'title' || ui.route === 'create' ? 'pre' : 'game';
-  const sc = document.querySelector('main');
-  if (sc && sameRoute === ui.route) sc.scrollTop = scroll;
-  sameRoute = ui.route;
+  // スクロールはさせず、はみ出す分はページ送りにする
+  const page = root.querySelector<HTMLElement>('main > .page, .page.create');
+  if (page) paginate(page, `${ui.route}:${ui.shopTab}:${ui.part}`);
+  const sheet = root.querySelector<HTMLElement>('.modal .sheet');
+  if (sheet) paginate(sheet, `modal:${ui.modal}:${ui.rival}`, true);
 }
-let sameRoute: Route = 'title';
 
 function go(r: Route) {
+  forgetPages();
   if (r !== 'fitting') ui.preview = null;
   ui.route = r;
   render();
-  document.querySelector('main')?.scrollTo(0, 0);
 }
 
 root.addEventListener('input', (e) => {
@@ -685,7 +680,7 @@ root.addEventListener('click', (e) => {
       return;
     }
     case 'swatch': ui.colorPick[el.dataset.m!] = v; render(); return;
-    case 'try': ui.preview = v; ui.route = 'fitting'; render(); document.querySelector('main')?.scrollTo(0, 0); return;
+    case 'try': ui.preview = v; forgetPages(); ui.route = 'fitting'; render(); return;
     case 'end-try': ui.preview = null; render(); return;
     case 'equip': {
       if (!s.trunksOwned.includes(v)) return;
