@@ -6,14 +6,14 @@ import {
   type CaloriePlan, type MacroPlan, type ScoreKey, type Volume,
 } from '../game/data';
 import {
-  actionStamina, advanceWeek, nextSeason, bodyStats, buyItem, buyTrunks, canAddAction, canUseExercise, categoryOf, GROWTH_LABEL, newGame, rollPlayer,
+  actionStamina, advanceWeek, nextSeason, isGameOver, missStreak, MISS_LIMIT, PRIZE_PLACES, bodyStats, buyItem, buyTrunks, canAddAction, canUseExercise, categoryOf, GROWTH_LABEL, newGame, rollPlayer,
   nutrition, planStamina, projectGrowth, stageFinish, staminaMax, useItem, type Action, type GameState,
 } from '../game/rules';
 import { runContest, trunksLook, trunksViolation } from '../game/scoring';
 import { getState, hasSave, mutate, setState, subscribe } from '../game/store';
 import { COACH_NAME, COACH_ROLE, contestLine, introLines, resultLine, weekLine, type CoachLine } from '../game/coach';
 import { SHOW_STEPS, showHtml } from './show';
-import { COMMAND_LABEL, COMMANDS, fatigueAfter, fatigueLevel, planInjury, predictPlace, previewCommand, recommend, riskLevel, commandAction, type CommandId } from '../game/guide';
+import { COMMAND_LABEL, COMMANDS, dietAdvice, fatigueAfter, fatigueLevel, planInjury, predictPlace, previewCommand, recommend, riskLevel, commandAction, type CommandId } from '../game/guide';
 import { forgetPages, paginate } from './pager';
 import { coachArt, heroArt, heroStage, playerArt, rivalArt, STAGE_LABEL, type ArtUse, type Face, type RivalUse } from './art';
 
@@ -142,10 +142,10 @@ function titleScreen() {
       <p>ボディビル大会 育成シミュレーション</p>
     </div>
     <div class="title-btns">
-      ${save && s ? `<button class="primary big" data-act="continue">続きから<small>${esc(s.player.name)}・${s.phase === 'season' ? `第${s.season ?? 1}回・第${s.week}週` : s.phase === 'contestDay' ? '大会前日' : '大会終了'}</small></button>` : ''}
+      ${save && s ? `<button class="primary big" data-act="continue">続きから<small>${esc(s.player.name)}・${s.phase === 'season' ? `第${s.season ?? 1}回・第${s.week}週` : s.phase === 'contestDay' ? '大会前日' : isGameOver(s) ? 'GAME OVER' : '大会終了'}</small></button>` : ''}
       <button class="${save ? 'ghost' : 'primary'} big" data-act="new">新しい選手で始める</button>
     </div>
-    <p class="fine">12週間で体を作り、${esc(CONTEST.name)}で優勝を目指す。<br>セーブデータはこの端末のブラウザ内にだけ保存されます。</p>
+    <p class="fine">${WEEKS}週間で体を作り、${esc(CONTEST.name)}で優勝を目指す。<br>セーブデータはこの端末のブラウザ内にだけ保存されます。</p>
   </div>`;
 }
 const FRAME_INFO: Record<Frame, [string, string]> = {
@@ -271,10 +271,17 @@ function trainingScreen(s: GameState) {
     }).join('')}</ol>
     ${s.plan.length ? '<button class="ghost sm clear-btn" data-act="clear-plan">予定をぜんぶ外す</button>' : ''}
     ${rec ? `<button class="rec-line" data-act="cmd" data-v="${rec.id}"><span class="rl-t"><b>${COACH_NAME.split(' ')[0]}のおすすめ：${COMMAND_LABEL[rec.id]}</b><span>${esc(rec.why)}</span></span><i>＋入れる</i></button>` : ''}
+    ${dietLine(s)}
     <div class="cmds pg-split">${COMMANDS.map(card).join('')}</div>
     <button class="ghost sm detail-btn" data-act="detail" data-v="1">種目と量を自分で選ぶ</button>
     ${advanceButton(s)}
   </div>`;
+}
+/** 食事のおすすめ（今の食事と違う時だけ。タップで切り替える） */
+function dietLine(s: GameState) {
+  const d = dietAdvice(s);
+  if (s.diet.cal === d.cal && s.diet.macro === d.macro) return '';
+  return `<button class="rec-line diet" data-act="diet-advice"><span class="rl-t"><b>食事のおすすめ：${CALORIE_PLANS[d.cal].label}・${MACRO_PLANS[d.macro].label}</b><span>${esc(d.why)}</span></span><i>変える</i></button>`;
 }
 function shortLabel(a: Action) {
   if (a.kind === 'train') { const e = EXERCISES.find((x) => x.id === a.ex)!; return `${PART_LABEL[e.part]}・${e.name.replace(/（.*）/, '')}`; }
@@ -320,6 +327,7 @@ function dietScreen(s: GameState) {
   const wk = n.weeklyFatChange;
   return `<div class="page">
     <h2>食事・コンディション</h2>
+    ${(() => { const d = dietAdvice(s); const same = s.diet.cal === d.cal && s.diet.macro === d.macro; return `<div class="diet-adv ${same ? 'same' : ''}"><b>${COACH_NAME.split(' ')[0]}のおすすめ：${CALORIE_PLANS[d.cal].label}・${MACRO_PLANS[d.macro].label}</b><span>${esc(d.why)}</span>${same ? '<em>今の食事はおすすめどおり</em>' : '<button class="primary sm" data-act="diet-advice">おすすめにする</button>'}</div>`; })()}
     <h3>摂取カロリーの方針</h3>
     <div class="opts pg-split">${(Object.keys(CALORIE_PLANS) as CaloriePlan[]).map((k) => {
       const c = CALORIE_PLANS[k];
@@ -504,6 +512,13 @@ function recordsBlock(s: GameState, withNow = false) {
   const wins = rows.filter((r) => r.place === 1).length;
   return `<h3>戦績 <small>優勝${wins}回</small></h3><ol class="records pg-split">${rows.map((r) => `<li class="${r.place === 1 ? 'win' : ''}"><span>第${r.season}回</span><span>${CATEGORIES[r.category].short}</span><b>${r.place}位</b><em>${r.prize ? yen(r.prize) : '—'}</em></li>`).join('')}</ol>`;
 }
+/** 入賞できなかった回数の注意（あと何回でゲームオーバーか） */
+function streakNote(s: GameState) {
+  const m = missStreak(s);
+  if (!m) return '';
+  const left = MISS_LIMIT - m;
+  return `<div class="alert">入賞なしが${m}回続いている。${left === 1 ? `次の大会で${PRIZE_PLACES}位以内に入れないと` : `あと${left}回続けて入賞できないと`}ゲームオーバー。</div>`;
+}
 const contestName = (s: GameState) => `第${s.season ?? 1}回 ${CONTEST.name}`;
 function resultScreen(s: GameState) {
   const r = s.result!;
@@ -529,7 +544,10 @@ function resultScreen(s: GameState) {
     <h3>ライバル</h3>
     ${rivalStrip()}
     ${recordsBlock(s, true)}
-    <div class="pg-pin pin-row"><button class="ghost" data-act="restart">新しい選手</button><button class="primary big gold" data-act="next-season">第${(s.season ?? 1) + 1}回大会へ（続ける）</button></div>
+    ${isGameOver(s) ? '' : streakNote(s)}
+    ${isGameOver(s)
+      ? `<div class="pg-pin pin-col"><div class="gameover"><b>GAME OVER</b><span>${MISS_LIMIT}回続けて入賞（${PRIZE_PLACES}位以内）できなかった。${esc(s.player.name)}はステージを降りた。</span></div><button class="primary big gold" data-act="restart">新しい選手で始める</button></div>`
+      : `<div class="pg-pin pin-row"><button class="ghost" data-act="restart">新しい選手</button><button class="primary big gold" data-act="next-season">第${(s.season ?? 1) + 1}回大会へ（続ける）</button></div>`}
   </div>`;
 }
 
@@ -549,7 +567,7 @@ function modal(s: GameState | null) {
       <div><span>収支</span><b>${yen(s.money)}</b><em>${r.moneyDelta >= 0 ? '+' : ''}${r.moneyDelta.toLocaleString()}</em></div></div>
       <div class="rep-parts">${PARTS.map((p) => `<span class="${r.devDelta[p] < 0 ? 'neg' : ''}">${PART_LABEL[p]} ${sgn(r.devDelta[p], 2)}</span>`).join('')}</div>
       <ul class="report pg-split">${r.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
-      ${s.phase === 'contestDay' ? '<p class="gold-t">12週間の準備が終わった。明日はいよいよ大会。</p>' : ''}
+      ${s.phase === 'contestDay' ? `<p class="gold-t">${WEEKS}週間の準備が終わった。明日はいよいよ大会。</p>` : ''}
       <button class="primary big pg-pin" data-act="close-modal">${s.phase === 'contestDay' ? '大会の最終準備へ' : '次の週へ'}</button></div></div>`;
   }
   if (ui.modal === 'restart') {
@@ -625,14 +643,16 @@ const HOWTO: { title: string; mood: 'serious' | 'encourage' | 'nervous' | 'achie
     '遅れている部位は審査の「バランス」で減点される。',
     'ケガをした部位は治るまで鍛えられない。',
   ] },
-  { title: '大会は12週後', mood: 'achievement', lines: [
+  { title: `大会は${WEEKS}週後`, mood: 'achievement', lines: [
     '審査は<b>筋肉・絞り（体脂肪）・ポーズ・肌</b>など。上の「今出たら◯位」が今の実力。',
-    '体脂肪は<b>食事</b>画面の減量と<b>有酸素</b>で落とす。後半は<b>ポーズ練習</b>も毎週。',
+    '前半は<b>増量</b>で筋肉を増やし、後半は<b>減量</b>と<b>有酸素</b>で絞る。青い<b>食事のおすすめ</b>をタップすれば切り替わる。',
+    '<b>3回続けて入賞（3位以内）できないとゲームオーバー</b>。後半は<b>ポーズ練習</b>も毎週。',
     'お金が足りない時は<b>バイト</b>。ジムのパスや日焼け用品はショップで買える。',
   ] },
 ];
 
 // ---- 描画 ----
+let showTimer = 0;
 function render() {
   const s = getState();
   if (!s && !['title', 'create'].includes(ui.route)) ui.route = 'title';
@@ -654,6 +674,13 @@ function render() {
     html = `${header(s)}<main class="r-${ui.route === 'contest' && s.result ? 'result' : ui.route}">${body}</main>${nav()}${modal(s)}${ui.show >= 0 && s.result ? showHtml(s, ui.show) : ''}`;
   }
   root.innerHTML = html;
+  // 大会のポーズの段は、少し待つと自動で次へ進む
+  clearTimeout(showTimer);
+  const auto = Number(root.querySelector<HTMLElement>('.show[data-auto]')?.dataset.auto ?? 0);
+  if (auto > 0) {
+    const at = ui.show;
+    showTimer = window.setTimeout(() => { if (ui.show === at) { ui.show++; if (ui.show >= SHOW_STEPS) ui.show = -1; render(); } }, auto);
+  }
   // 成長の数値を数え上げる
   root.querySelectorAll<HTMLElement>('[data-count]').forEach((el, i) => {
     const to = Number(el.dataset.count);
@@ -721,7 +748,7 @@ root.addEventListener('click', (e) => {
     }
     case 'restart': ui.modal = 'restart'; render(); return;
     case 'next-season': {
-      if (!s || s.phase !== 'done') return;
+      if (!s || s.phase !== 'done' || isGameOver(s)) return;
       setState(nextSeason(s));
       ui.view = 'sheet-front';
       ui.show = -1;
@@ -781,6 +808,7 @@ root.addEventListener('click', (e) => {
       return;
     }
     case 'cal': mutate((x) => { x.diet.cal = v as CaloriePlan; }); return;
+    case 'diet-advice': { if (!s || s.phase !== 'season') return; const d = dietAdvice(s); mutate((x) => { x.diet = { cal: d.cal, macro: d.macro }; }); return; }
     case 'macro': mutate((x) => { x.diet.macro = v as MacroPlan; }); return;
     case 'shop-tab': ui.shopTab = v as typeof ui.shopTab; render(); return;
     case 'buy': {

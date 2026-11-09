@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { previewCommand, recommend } from '../src/game/guide';
-import { advanceWeek, bodyStats, newGame, nextSeason, type GameState } from '../src/game/rules';
+import { dietAdvice, previewCommand, recommend } from '../src/game/guide';
+import { WEEKS } from '../src/game/data';
+import { advanceWeek, bodyStats, isGameOver, missStreak, newGame, nextSeason, type GameState } from '../src/game/rules';
 import { rivalGrowth, runContest } from '../src/game/scoring';
 
-/** おすすめだけで12週を進めて大会に出る */
+/** 練習も食事もトレーナーのおすすめどおりに準備期間を進めて大会に出る */
 function playSeason(s: GameState): GameState {
-  for (let w = 1; w <= 12; w++) {
-    const behind = bodyStats(s).bf > 14 - w * 0.75;
-    s.diet = { cal: w <= 10 ? (behind ? 'cutHard' : 'cut') : 'cutMild', macro: w <= 10 ? 'highProtein' : 'highCarb' };
+  for (let w = 1; w <= WEEKS; w++) {
+    const d = dietAdvice(s);
+    s.diet = { cal: d.cal, macro: d.macro };
     s.plan = [];
     for (let i = 0; i < 6; i++) {
       const r = recommend(s);
@@ -45,7 +46,7 @@ describe('大会の後も続けて遊べる', () => {
     expect(rivalGrowth(1)).toBe(0);
     expect(rivalGrowth(2)).toBeGreaterThan(0);
     expect(rivalGrowth(3)).toBeGreaterThan(rivalGrowth(2));
-    expect(rivalGrowth(50)).toBeLessThanOrEqual(9);
+    expect(rivalGrowth(50)).toBeLessThanOrEqual(20);
   });
 
   it('5シーズン続けても遊べて、戦績が残る', () => {
@@ -60,5 +61,32 @@ describe('大会の後も続けて遊べる', () => {
     expect(s.season).toBe(5);
     for (const p of places) { expect(p).toBeGreaterThanOrEqual(1); expect(p).toBeLessThanOrEqual(6); }
     console.log('places', places.join(','), 'money', s.money);
+  });
+
+  it('3シーズン続けて入賞できないとゲームオーバー。入賞すれば数え直し', () => {
+    const fake = (s: GameState, place: number): GameState => {
+      const r = { category: s.player.category, ranking: [], playerPlace: place, prize: 0, good: [], improve: [], notes: [], compareWith: '' };
+      return { ...s, phase: 'done', result: r } as GameState;
+    };
+    let s: GameState = newGame({ name: 'テスト', heightCm: 175, frame: 'meso', category: 'bodybuilding', skinTone: 1 }, 2);
+    s = fake(s, 4); expect(missStreak(s)).toBe(1); expect(isGameOver(s)).toBe(false);
+    s = fake(nextSeason(s), 5); expect(missStreak(s)).toBe(2);
+    s = fake(nextSeason(s), 3); expect(missStreak(s)).toBe(0); // 入賞で数え直し
+    s = fake(nextSeason(s), 4); s = fake(nextSeason(s), 6); expect(isGameOver(s)).toBe(false);
+    s = fake(nextSeason(s), 4);
+    expect(missStreak(s)).toBe(3);
+    expect(isGameOver(s)).toBe(true);
+    // ゲームオーバーの後は次の大会へ進めない
+    expect(nextSeason(s).phase).toBe('done');
+  });
+
+  it('おすすめどおりに進めると、最初の大会でも入賞に届くことがある', () => {
+    let top3 = 0;
+    for (let seed = 1; seed <= 6; seed++) {
+      const s = playSeason(newGame({ name: 'テスト', heightCm: 175, frame: 'meso', category: 'bodybuilding', skinTone: 1 }, seed));
+      if (s.result!.playerPlace <= 3) top3++;
+      expect(s.result!.playerPlace).toBeLessThanOrEqual(4);
+    }
+    expect(top3).toBeGreaterThanOrEqual(2);
   });
 });

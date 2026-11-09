@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { advanceWeek, bodyStats, buyItem, buyTrunks, canAddAction, growthRate, newGame, rollPlayer, useItem, type Action, type GameState, type PlayerInfo } from '../src/game/rules';
 import { heroStage } from '../src/ui/art';
 import { runContest } from '../src/game/scoring';
-import type { Category } from '../src/game/data';
+import { WEEKS, type Category } from '../src/game/data';
+import { dietAdvice } from '../src/game/guide';
 
 function setPlan(s: GameState, plan: Action[]) {
   s.plan = [];
@@ -12,21 +13,22 @@ function setPlan(s: GameState, plan: Action[]) {
 function playGood(cat: Category, seed: number, info?: PlayerInfo, onWeek?: (s: GameState) => void) {
   let s = newGame(info ?? { name: 'テスト', heightCm: 175, frame: 'meso', category: cat, skinTone: 1 }, seed);
   buyItem(s, 'gymPass');
-  for (let w = 1; w <= 12; w++) {
-    // 体脂肪が予定より多い時は強めに絞る（体脂肪が多めの選手は減量を強める）
-    const behind = bodyStats(s).bf > 14 - w * 0.75;
-    s.diet = { cal: w <= 10 ? (behind ? 'cutHard' : 'cut') : 'cutMild', macro: w <= 10 ? 'highProtein' : 'highCarb' };
+  for (let w = 1; w <= WEEKS; w++) {
+    // 食事はトレーナーのおすすめ（前半は増量・後半は体脂肪の線に合わせて絞る）
+    const d = dietAdvice(s);
+    s.diet = { cal: d.cal, macro: d.macro };
+    const late = w - (WEEKS - 12); // 大会の12週前を1とする
     if (s.gymWeeks === 0 && s.money > 20000) buyItem(s, 'gymPass');
     setPlan(s, [
       { kind: 'train', ex: 'bench', vol: 'normal' },
       { kind: 'train', ex: s.gymWeeks ? 'latPull' : 'pullup', vol: 'normal' },
       { kind: 'train', ex: s.gymWeeks ? 'legPress' : 'bss', vol: 'normal' },
-      w >= 7 ? { kind: 'cardio' } : { kind: 'train', ex: 'lateral', vol: 'normal' },
-      w >= 5 ? { kind: 'posing' } : { kind: 'train', ex: 'dbCurl', vol: 'normal' },
-      w >= 4 ? { kind: 'cardio' } : { kind: 'train', ex: 'plank', vol: 'normal' },
+      late >= 7 ? { kind: 'cardio' } : { kind: 'train', ex: 'lateral', vol: 'normal' },
+      late >= 5 ? { kind: 'posing' } : { kind: 'train', ex: 'dbCurl', vol: 'normal' },
+      late >= 4 ? { kind: 'cardio' } : { kind: 'train', ex: 'plank', vol: 'normal' },
     ]);
-    if (w >= 8 && s.money > 30000) { buyItem(s, 'posingLesson'); useItem(s, 'posingLesson'); }
-    if (w >= 9) {
+    if (late >= 8 && s.money > 30000) { buyItem(s, 'posingLesson'); useItem(s, 'posingLesson'); }
+    if (late >= 9) {
       if (s.money > 10000) { buyItem(s, 'scrub'); useItem(s, 'scrub'); }
       if (s.money > 10000) { buyItem(s, 'tanPro'); useItem(s, 'tanPro'); }
     }
@@ -43,7 +45,7 @@ function playGood(cat: Category, seed: number, info?: PlayerInfo, onWeek?: (s: G
 function playLazy(cat: Category, seed: number) {
   let s = newGame({ name: 'テスト', heightCm: 175, frame: 'meso', category: cat, skinTone: 1 }, seed);
   s.diet = { cal: 'bulk', macro: 'balanced' };
-  for (let w = 1; w <= 12; w++) s = advanceWeek(s);
+  for (let w = 1; w <= WEEKS; w++) s = advanceWeek(s);
   return { s, r: runContest(s) };
 }
 
@@ -119,11 +121,11 @@ describe('ランダムな選手', () => {
     }
     expect(rollPlayer(42)).toEqual(rollPlayer(42));
   });
-  it('早熟は前半、晩成は後半に伸び、12週の平均はほぼ同じ', () => {
-    const avg = (g: 'early' | 'late') => Array.from({ length: 12 }, (_, i) => growthRate({ name: '', heightCm: 175, frame: 'meso', category: 'bodybuilding', skinTone: 1, growth: g }, i + 1)).reduce((a, b) => a + b) / 12;
+  it('早熟は前半、晩成は後半に伸び、準備期間の平均はほぼ同じ', () => {
+    const avg = (g: 'early' | 'late') => Array.from({ length: WEEKS }, (_, i) => growthRate({ name: '', heightCm: 175, frame: 'meso', category: 'bodybuilding', skinTone: 1, growth: g }, i + 1)).reduce((a, b) => a + b) / WEEKS;
     const at = (g: 'early' | 'late', w: number) => growthRate({ name: '', heightCm: 175, frame: 'meso', category: 'bodybuilding', skinTone: 1, growth: g }, w);
     expect(at('early', 1)).toBeGreaterThan(at('late', 1));
-    expect(at('late', 12)).toBeGreaterThan(at('early', 12));
+    expect(at('late', WEEKS)).toBeGreaterThan(at('early', WEEKS));
     expect(Math.abs(avg('early') - avg('late'))).toBeLessThan(0.02);
   });
   it('計画的に準備すれば、どの選手でもおおむね上位に入れる', () => {

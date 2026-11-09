@@ -137,7 +137,7 @@ export function playerInput(s: GameState): CompetitorInput {
 /** ライバルも毎年鍛えてくる（2回目以降の大会。伸びは少しずつ鈍る） */
 export function rivalGrowth(season = 1): number {
   const n = Math.max(0, season - 1);
-  return 9 * (1 - Math.exp(-n / 3));
+  return 20 * (1 - Math.exp(-n / 3));
 }
 export function rivalInputs(cat: Category, season = 1): CompetitorInput[] {
   const up = rivalGrowth(season);

@@ -1,3 +1,4 @@
+import { WEEKS } from '../src/game/data';
 import { describe, expect, test } from 'vitest';
 import { PARTS } from '../src/game/body';
 import { contestLine, introLines, MOODS, resultLine, weekLine } from '../src/game/coach';
@@ -22,7 +23,7 @@ describe('トレーナーの会話', () => {
     s.lastReport = report(3, 0.05); expect(weekLine(s).mood).toBe('serious');
     s.lastReport = report(3, 0.9); expect(weekLine(s).mood).toBe('encourage');
     s.lastReport = report(3, 0.2, '肩を痛めた'); expect(weekLine(s).mood).toBe('surprised');
-    s.lastReport = report(11, 0.2); expect(weekLine(s).mood).toBe('nervous');
+    s.lastReport = report(WEEKS - 1, 0.2); expect(weekLine(s).mood).toBe('nervous');
     s.lastReport = report(3, 0.2); s.body.fatigue = 90; expect(weekLine(s).mood).toBe('frustrated');
   });
   test('大会の前は緊張、結果で喜び・達成・悔しさ', () => {

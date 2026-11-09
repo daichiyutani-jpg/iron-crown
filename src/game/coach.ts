@@ -1,7 +1,7 @@
 // トレーナー（神崎 真琴）の会話。状態から「表情」と「せりふ」を選ぶだけで、ゲームの数値は変えない。
 import { PARTS } from './body';
 import { PART_LABEL, WEEKS } from './data';
-import { bodyStats, type GameState } from './rules';
+import { bodyStats, isGameOver, MISS_LIMIT, missStreak, PRIZE_PLACES, type GameState } from './rules';
 
 export const COACH_NAME = '神崎 真琴';
 export const COACH_ROLE = 'トレーナー・元フィジーク選手';
@@ -20,7 +20,8 @@ export function introLines(s: GameState): CoachLine[] {
     return [
       { mood: last?.place === 1 ? 'joy' : 'serious', text: last?.place === 1 ? `前回は優勝。でも王者は追われる側だ。第${n}回大会まで${WEEKS}週、もう一度仕上げよう。` : `前回は${last?.place ?? '-'}位。悔しさは体で返そう。第${n}回大会まで${WEEKS}週。` },
       ...(s.offGain ? [{ mood: 'achievement' as Mood, text: `オフの増量期で体が一回り大きくなった。${[...PARTS].sort((a, b) => s.offGain![b] - s.offGain![a]).slice(0, 3).map((p) => `${PART_LABEL[p]} +${s.offGain![p].toFixed(1)}`).join('、')}。` }] : []),
-      { mood: 'encourage', text: 'ライバルたちもこの1年で鍛えてきている。いったん戻った体脂肪を、また12週で絞ろう。' },
+      { mood: 'encourage', text: 'ライバルたちもこの1年で鍛えてきている。前半で筋肉を増やして、後半でまた絞ろう。' },
+      ...(missStreak(s) >= MISS_LIMIT - 1 ? [{ mood: 'nervous' as Mood, text: `入賞なしが${missStreak(s)}回続いている。今回も${PRIZE_PLACES}位以内に入れなければ、ここで引退だ。食事のおすすめも見ながら、全部出し切ろう。` }] : []),
     ];
   }
   return [
@@ -65,7 +66,8 @@ export function contestLine(s: GameState): CoachLine {
 export function resultLine(s: GameState): CoachLine {
   const r = s.result;
   if (!r) return contestLine(s);
-  if (r.playerPlace === 1) return { mood: 'joy', text: 'やった…！ 優勝だ！ 12週間、本当によく頑張った！' };
-  if (r.playerPlace <= 3) return { mood: 'achievement', text: `${r.playerPlace}位、入賞！ 初めての舞台でここまで来られたのは本物だ。` };
+  if (r.playerPlace === 1) return { mood: 'joy', text: `やった…！ 優勝だ！ ${WEEKS}週間、本当によく頑張った！` };
+  if (r.playerPlace <= PRIZE_PLACES) return { mood: 'achievement', text: (s.season ?? 1) === 1 ? `${r.playerPlace}位、入賞！ 初めての舞台でここまで来られたのは本物だ。` : `${r.playerPlace}位、入賞！ 次は一番上を狙おう。` };
+  if (isGameOver(s)) return { mood: 'frustrated', text: `${r.playerPlace}位…。${MISS_LIMIT}回続けて入賞できなかった。ここまで一緒に戦ってくれて、ありがとう。` };
   return { mood: 'frustrated', text: `${r.playerPlace}位…悔しいね。でも差ははっきりした。次は必ず勝とう。` };
 }

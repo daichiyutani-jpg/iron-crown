@@ -208,7 +208,7 @@ export const RIVALS: Rival[] = [
   { id: 'r5', name: '真壁 亮', age: 30, heightCm: 175, frame: 'meso', dev: { chest: 46, back: 46, shoulders: 46, arms: 45, legs: 48, abs: 44 }, bodyFat: 8.4, imbalance: 2.2, posing: 60, condition: 75, fullness: 0.85, tan: 74, uneven: 28, style: '初出場。バランスは良いが全体に線が細い。' },
 ];
 
-export const WEEKS = 12;
+export const WEEKS = 24;
 export const SLOTS = 6;
 export const START_MONEY = 60000;
 export const WEEKLY_INCOME = 15000;

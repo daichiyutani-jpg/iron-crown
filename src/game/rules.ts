@@ -246,16 +246,16 @@ export function projectGrowth(s: GameState, plan: Action[] = s.plan): Record<Par
   return out;
 }
 
-/** 成長タイプと才能による、その週の発達の倍率（12週の平均はおよそ才能の値） */
+/** 成長タイプと才能による、その週の発達の倍率（準備期間の平均はおよそ才能の値） */
 export function growthRate(p: PlayerInfo, week: number): number {
-  const w = clamp(week, 1, 12);
-  const curve = p.growth === 'early' ? 1.28 - 0.05 * (w - 1) : p.growth === 'late' ? 0.72 + 0.05 * (w - 1) : 1;
+  const t = (clamp(week, 1, WEEKS) - 1) / (WEEKS - 1); // 0〜1
+  const curve = p.growth === 'early' ? 1.28 - 0.55 * t : p.growth === 'late' ? 0.72 + 0.55 * t : 1;
   return curve * (p.talent ?? 1);
 }
 
 export const GROWTH_LABEL: Record<GrowthType, [string, string]> = {
   early: ['早熟型', '前半によく伸び、後半は伸びが鈍る'],
-  normal: ['普通型', '12週を通して同じように伸びる'],
+  normal: ['普通型', '準備期間を通して同じように伸びる'],
   late: ['晩成型', '前半は伸びが遅く、後半に大きく伸びる'],
 };
 
@@ -300,7 +300,7 @@ export function newGame(info: PlayerInfo, seed = Date.now()): GameState {
       partFatigue: Object.fromEntries(PARTS.map((p) => [p, 10])) as Record<Part, number>,
       injury: null, posing: info.start?.posing ?? 30, adapt: 0,
     },
-    diet: { cal: 'cutMild', macro: 'balanced' },
+    diet: { cal: 'maintain', macro: 'highProtein' }, // 前半は筋肉を増やす
     plan: [], // 最初の週は空。週を終えると同じ予定が翌週に残る
     inv: {},
     trunksOwned: ['practice:black'],
@@ -465,11 +465,28 @@ export function advanceWeek(s0: GameState): GameState {
   return s;
 }
 
+// ---- 入賞とゲームオーバー ----
+/** 入賞は3位まで（賞金が出る順位） */
+export const PRIZE_PLACES = 3;
+/** 何シーズン続けて入賞できないとゲームオーバー（引退）か */
+export const MISS_LIMIT = 3;
+/** 直近で続けて入賞できなかった回数（今回の結果を含む） */
+export function missStreak(s: GameState): number {
+  const places = [...(s.records ?? []).map((r) => r.place), ...(s.result ? [s.result.playerPlace] : [])];
+  let n = 0;
+  for (let i = places.length - 1; i >= 0 && places[i] > PRIZE_PLACES; i--) n++;
+  return n;
+}
+/** 3シーズン続けて入賞できなかったらゲームオーバー */
+export function isGameOver(s: GameState): boolean {
+  return s.phase === 'done' && !!s.result && missStreak(s) >= MISS_LIMIT;
+}
+
 // ---- 次のシーズン ----
 /** 大会の後、同じ選手で次の大会に向けて第1週からやり直す。筋肉・ポーズ・お金・持ち物・衣装は引き継ぐ */
 export function nextSeason(s0: GameState): GameState {
   const s: GameState = structuredClone(s0);
-  if (s.phase !== 'done' || !s.result) return s;
+  if (s.phase !== 'done' || !s.result || isGameOver(s)) return s;
   const season = s.season ?? 1;
   s.records = [...(s.records ?? []), { season, place: s.result.playerPlace, prize: s.result.prize, category: s.result.category }];
   s.season = season + 1;
@@ -480,12 +497,13 @@ export function nextSeason(s0: GameState): GameState {
   s.plan = [];
   s.prep = { color: false, gloss: false, carbUp: false };
   s.trainLog = [];
+  s.diet = { cal: 'maintain', macro: 'highProtein' }; // 前半はまた筋肉を増やす
   const b = s.body;
   // 大会と大会の間のオフ（増量期）で筋肉が育つ。伸びしろが減るほど伸びは小さくなる
   const off = {} as Record<Part, number>;
   for (const p of PARTS) {
     const pot = Math.pow(Math.max(0, 1 - b.dev[p] / 105), 1.2);
-    off[p] = 5.5 * pot * (s.player.talent ?? 1) * (s.player.strong === p ? 1.2 : 1);
+    off[p] = 2.5 * pot * (s.player.talent ?? 1) * (s.player.strong === p ? 1.2 : 1);
     b.dev[p] = clamp(b.dev[p] + off[p], 5, 100);
   }
   s.offGain = off;

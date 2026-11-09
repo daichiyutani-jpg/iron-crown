@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { COMMANDS, fatigueAfter, planInjury, predictPlace, previewCommand, recommend } from '../src/game/guide';
+import { COMMANDS, dietAdvice, fatigueAfter, planInjury, predictPlace, previewCommand, recommend } from '../src/game/guide';
 import { advanceWeek, bodyStats, newGame, type GameState } from '../src/game/rules';
 import { runContest } from '../src/game/scoring';
+import { WEEKS } from '../src/game/data';
 
 const fresh = (seed = 1) => newGame({ name: 'テスト', heightCm: 175, frame: 'meso', category: 'bodybuilding', skinTone: 1 }, seed);
 
@@ -47,8 +48,9 @@ describe('練習のコマンドカード', () => {
     const places: number[] = [];
     for (let seed = 1; seed <= 6; seed++) {
       let s: GameState = fresh(seed);
-      for (let w = 1; w <= 12; w++) {
-        s.diet = { cal: w <= 10 ? 'cut' : 'cutMild', macro: w <= 10 ? 'highProtein' : 'highCarb' };
+      for (let w = 1; w <= WEEKS; w++) {
+        const d = dietAdvice(s);
+        s.diet = { cal: d.cal, macro: d.macro };
         s.plan = [];
         for (let i = 0; i < 6; i++) {
           const r = recommend(s);
@@ -61,7 +63,7 @@ describe('練習のコマンドカード', () => {
       }
       s.prep.carbUp = true;
       places.push(runContest(s).playerPlace);
-      expect(bodyStats(s).bf).toBeLessThan(10);
+      expect(bodyStats(s).bf).toBeLessThan(7);
     }
     const avg = places.reduce((a, b) => a + b, 0) / places.length;
     expect(avg).toBeLessThanOrEqual(4);

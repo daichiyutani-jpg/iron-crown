@@ -1,8 +1,8 @@
 // 練習画面の「コマンド」と、その効果の見込み（上がる能力・疲労・ケガの確率）。ゲームの計算は rules.ts のまま使う。
 import { PARTS, type Part } from './body';
-import { EXERCISES, PART_LABEL, SLOTS, VOLUME, type Volume } from './data';
+import { CALORIE_PLANS, EXERCISES, MACRO_PLANS, PART_LABEL, SLOTS, VOLUME, WEEKS, type CaloriePlan, type MacroPlan, type Volume } from './data';
 import {
-  advanceWeek, canAddAction, canUseExercise, exerciseById, injuryRisk, nutrition, projectGrowth, staminaMax, planStamina, actionStamina,
+  advanceWeek, bodyStats, canAddAction, canUseExercise, exerciseById, injuryRisk, nutrition, projectGrowth, staminaMax, planStamina, actionStamina,
   type Action, type GameState,
 } from './rules';
 import { playerInput, rivalInputs, scoreCompetitor, totalScore } from './scoring';
@@ -125,7 +125,7 @@ export function recommend(s: GameState): { id: CommandId; why: string } | null {
   const f = fatigueAfter(s).fatigue;
   const has = (k: string) => s.plan.some((a) => a.kind === k);
   if ((f >= 60 || s.body.fatigue >= 65) && !has('rest')) return { id: 'rest', why: `疲労がたまっている（週末の見込み ${f.toFixed(0)}）。休んで伸びを落とさないように。` };
-  if (s.week >= 5 && s.body.posing < 70 && !has('posing') && left >= 10) return { id: 'posing', why: '大会まで半分を切った。ポーズは毎週少しずつ磨こう。' };
+  if (s.week >= Math.round(WEEKS * 0.4) && s.body.posing < 70 && !has('posing') && left >= 10) return { id: 'posing', why: '大会が近づいてきた。ポーズは毎週少しずつ磨こう。' };
   if (s.money < 15000 && !has('work') && left >= 16) return { id: 'work', why: '所持金が少ない。食費が払えないと体が育たない。' };
   // 一番遅れていて、疲れていない部位
   const trained = new Set(s.plan.filter((a) => a.kind === 'train').map((a) => exerciseById((a as { ex: string }).ex).part));
@@ -145,4 +145,29 @@ export function predictPlace(s: GameState): { place: number; of: number } {
   const me = totalScore(scoreCompetitor(playerInput(s), cat), cat);
   const others = rivalInputs(cat, s.season).map((r) => totalScore(scoreCompetitor(r, cat), cat));
   return { place: 1 + others.filter((t) => t > me).length, of: others.length + 1 };
+}
+
+/** 増量（筋肉を増やす）期間の週数。残りで絞る */
+export const BUILD_WEEKS = Math.round(WEEKS * 0.42);
+/** 大会当日に目指す体脂肪率 */
+export const TARGET_BF = 5;
+
+/** トレーナーの食事のおすすめ。前半は筋肉を増やし、後半は大会の体脂肪率に向けて絞る。最後の2週は張りを戻す */
+export function dietAdvice(s: GameState): { cal: CaloriePlan; macro: MacroPlan; why: string } {
+  const w = s.week;
+  const bf = bodyStats(s).bf;
+  const label = (c: CaloriePlan, m: MacroPlan) => `${CALORIE_PLANS[c].label}・${MACRO_PLANS[m].label}`;
+  if (w >= WEEKS - 1) {
+    return { cal: 'cutMild', macro: 'highCarb', why: `大会直前。${label('cutMild', 'highCarb')}で筋肉の張りを戻そう。` };
+  }
+  // 大会の2週前に目標の体脂肪率へ届くように、週あたり約0.55%ずつ落とす線
+  const line = TARGET_BF + 0.4 + (WEEKS - 2 - w) * 0.55;
+  if (w <= BUILD_WEEKS && bf < line - 1) {
+    const cal: CaloriePlan = bf < line - 4 ? 'bulk' : 'maintain';
+    return { cal, macro: 'highProtein', why: `今は筋肉を増やす時期（〜第${BUILD_WEEKS}週）。${label(cal, 'highProtein')}で体を大きくしよう。` };
+  }
+  if (bf > line + 1.5) return { cal: 'cutHard', macro: 'highProtein', why: `体脂肪率 ${bf.toFixed(1)}% は予定より高い。${label('cutHard', 'highProtein')}で急いで絞ろう（体調は落ちる）。` };
+  if (bf > line) return { cal: 'cut', macro: 'highProtein', why: `大会に向けて絞る時期。体脂肪率 ${bf.toFixed(1)}% → 目標 ${TARGET_BF}%。${label('cut', 'highProtein')}がおすすめ。` };
+  if (bf < TARGET_BF - 0.5) return { cal: 'maintain', macro: 'balanced', why: `もう十分に絞れている（${bf.toFixed(1)}%）。絞りすぎると筋肉と体調が落ちる。${label('maintain', 'balanced')}で保とう。` };
+  return { cal: 'cutMild', macro: 'highProtein', why: `予定どおり絞れている（${bf.toFixed(1)}%）。${label('cutMild', 'highProtein')}でゆっくり落とそう。` };
 }
