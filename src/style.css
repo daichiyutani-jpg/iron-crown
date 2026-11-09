@@ -227,9 +227,6 @@ main { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: 
 .rep-parts span.neg { color: var(--bad); }
 .gold-t { color: var(--gold2) !important; }
 
-#toast { position: fixed; left: 50%; bottom: calc(80px + env(safe-area-inset-bottom)); transform: translate(-50%, 20px); background: #ececee; color: #111; padding: 10px 16px; border-radius: 10px; font-size: 13.5px; opacity: 0; transition: 0.25s; pointer-events: none; z-index: 30; max-width: 90vw; }
-#toast.show { opacity: 1; transform: translate(-50%, 0); }
-#toast.bad { background: var(--bad); color: #fff; }
 
 /* タイトル */
 #app.pre { height: 100dvh; max-width: 560px; margin: 0 auto; overflow: hidden; }

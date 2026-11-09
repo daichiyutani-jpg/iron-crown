@@ -29,7 +29,7 @@ const ui = {
   shopTab: 'tan' as 'tan' | 'trunks' | 'cond',
   preview: null as string | null,
   colorPick: {} as Record<string, string>,
-  modal: null as null | 'report' | 'restart' | 'contest' | 'rival' | 'intro' | 'coach' | 'howto',
+  modal: null as null | 'report' | 'empty' | 'restart' | 'contest' | 'rival' | 'intro' | 'coach' | 'howto',
   rival: '',
   introStep: 0,
   show: -1, // 大会演出の段（-1 = 出していない）
@@ -70,15 +70,6 @@ function coachBox(l: CoachLine, tap = false) {
   return `<div class="coach mood-${l.mood}"${tap ? ' data-act="coach"' : ''}>${url ? `<div class="art co-face"><img src="${url}" alt="" decoding="async"></div>` : ''}<div class="co-say"><b>${COACH_NAME}</b><p>${esc(l.text)}</p></div></div>`;
 }
 
-let toastTimer = 0;
-function toast(msg: string, bad = false) {
-  let t = document.getElementById('toast');
-  if (!t) { t = document.createElement('div'); t.id = 'toast'; document.body.appendChild(t); }
-  t.textContent = msg;
-  t.className = bad ? 'show bad' : 'show';
-  clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => (t!.className = ''), 2200);
-}
 
 // ---- 選手の絵（2D）。育成段階ごとのイラストを向き別に見せる ----
 const VIEWS: [ArtUse, string][] = [['sheet-front', '正面'], ['sheet-back', '背面'], ['sheet-side', '側面'], ['pose', 'ポーズ']];
@@ -570,6 +561,10 @@ function modal(s: GameState | null) {
       ${s.phase === 'contestDay' ? `<p class="gold-t">${WEEKS}週間の準備が終わった。明日はいよいよ大会。</p>` : ''}
       <button class="primary big pg-pin" data-act="close-modal">${s.phase === 'contestDay' ? '大会の最終準備へ' : '次の週へ'}</button></div></div>`;
   }
+  if (ui.modal === 'empty') {
+    return `<div class="modal"><div class="sheet"><h3>今週は何も行動していません</h3><p>このまま週を進めますか？</p>
+      <div class="pg-pin pin-row"><button class="ghost" data-act="close-modal">やめる</button><button class="primary big" data-act="advance-empty">週を進める</button></div></div></div>`;
+  }
   if (ui.modal === 'restart') {
     return `<div class="modal"><div class="sheet"><h3>新しい選手で始めますか？</h3><p>現在の選手のセーブデータは消えます。</p>
       <div class="pg-pin pin-row"><button class="ghost" data-act="close-modal">やめる</button><button class="primary big" data-act="confirm-restart">新しい選手を作る</button></div></div></div>`;
@@ -738,7 +733,6 @@ root.addEventListener('click', (e) => {
       const face = FACES.find((f) => f.id === ui.create.face)!;
       const name = ui.create.name.trim() || face.name;
       const g = newGame({ ...ui.create.roll, name, face: face.id, skinTone: face.skinTone });
-      if (g.player.category === 'classic') toast('クラシック部門はクラシックカットの衣装が必要です（ショップで購入）');
       ui.view = 'sheet-front';
       setState(g);
       ui.introStep = 0;
@@ -774,7 +768,14 @@ root.addEventListener('click', (e) => {
   if (!s) return;
   switch (act) {
     case 'advance': {
-      if (s.plan.length === 0 && !confirm('今週は何も行動していません。このまま週を進めますか？')) return;
+      if (s.plan.length === 0 && ui.modal !== 'empty') { ui.modal = 'empty'; render(); return; }
+      setState(advanceWeek(s));
+      ui.modal = 'report';
+      render();
+      return;
+    }
+    case 'advance-empty': {
+      if (s.phase !== 'season') return;
       setState(advanceWeek(s));
       ui.modal = 'report';
       render();
@@ -787,7 +788,7 @@ root.addEventListener('click', (e) => {
       const a = commandAction(s, v as CommandId);
       if (!a) return;
       const c = canAddAction(s, a);
-      if (!c.ok) { toast(c.reason!, true); return; }
+      if (!c.ok) return;
       mutate((x) => { x.plan.push(a); });
       return;
     }
@@ -796,14 +797,14 @@ root.addEventListener('click', (e) => {
     case 'add-ex': {
       const a: Action = { kind: 'train', ex: v, vol: ui.vol[v] ?? 'normal' };
       const c = canAddAction(s, a);
-      if (!c.ok) { toast(c.reason!, true); return; }
+      if (!c.ok) return;
       mutate((x) => { x.plan.push(a); });
       return;
     }
     case 'add-other': {
       const a = { kind: v } as Action;
       const c = canAddAction(s, a);
-      if (!c.ok) { toast(c.reason!, true); return; }
+      if (!c.ok) return;
       mutate((x) => { x.plan.push(a); });
       return;
     }
@@ -812,16 +813,12 @@ root.addEventListener('click', (e) => {
     case 'macro': mutate((x) => { x.diet.macro = v as MacroPlan; }); return;
     case 'shop-tab': ui.shopTab = v as typeof ui.shopTab; render(); return;
     case 'buy': {
-      let res = { ok: false, msg: '' };
-      mutate((x) => { res = buyItem(x, v); });
-      toast(res.msg, !res.ok);
+      mutate((x) => { buyItem(x, v); });
       return;
     }
     case 'buy-trunks': {
       const m = TRUNKS.find((t) => t.id === v.split(':')[0])!;
-      let res = { ok: false, msg: '' };
-      mutate((x) => { res = buyTrunks(x, v, m.price); });
-      toast(res.ok ? `${m.name}を購入しました（日焼け・衣装の画面で装備）` : res.msg, !res.ok);
+      mutate((x) => { buyTrunks(x, v, m.price); });
       return;
     }
     case 'swatch': ui.colorPick[el.dataset.m!] = v; render(); return;
@@ -829,18 +826,14 @@ root.addEventListener('click', (e) => {
     case 'end-try': ui.preview = null; render(); return;
     case 'equip': {
       if (!s.trunksOwned.includes(v)) return;
-      if (s.phase === 'done') { toast('大会は終了しています', true); return; }
-      const viol = trunksViolation(v, s.player.category);
+      if (s.phase === 'done') return;
       mutate((x) => { x.trunksEquipped = v; });
       ui.preview = null;
       render();
-      toast(viol ? `装備しました（注意：${viol}）` : '装備しました', !!viol);
       return;
     }
     case 'use': {
-      let res = { ok: false, msg: '' };
-      mutate((x) => { res = useItem(x, v); });
-      toast(res.msg, !res.ok);
+      mutate((x) => { useItem(x, v); });
       return;
     }
     case 'prep': mutate((x) => { x.prep[v as 'color'] = !x.prep[v as 'color']; }); return;
