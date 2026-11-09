@@ -73,7 +73,7 @@ main { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: 
 .fig-trunks { position: absolute; right: 10px; top: 10px; display: flex; align-items: center; gap: 6px; font-size: 11px; background: rgba(7,11,24,.75); border-radius: 999px; padding: 3px 10px 3px 4px; }
 .fig-trunks i { width: 18px; height: 18px; border-radius: 50%; border: 3px solid; }
 .viewer-loading { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; color: var(--sub); font-size: 13px; letter-spacing: 0.1em; pointer-events: none; }
-.pose-row { display: flex; gap: 6px; overflow-x: auto; padding: 8px 12px; scrollbar-width: none; }
+.pose-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px; }
 .pose-row::-webkit-scrollbar { display: none; }
 .view-btns { position: absolute; top: 10px; right: 10px; display: flex; flex-direction: column; gap: 6px; }
 .preview-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; background: #17150f; border-top: 1px solid #3a321c; font-size: 13px; }
@@ -131,7 +131,7 @@ main { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: 
 .proj .neg b { color: var(--bad); }
 .proj em { font-style: normal; font-size: 10.5px; color: var(--sub); }
 .proj .pf { position: absolute; left: 0; bottom: 0; height: 3px; width: var(--v); background: var(--warn); }
-.tabs { display: flex; gap: 4px; overflow-x: auto; margin-bottom: 10px; scrollbar-width: none; }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
 .tabs button { flex: 1; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 8px; font-size: 13.5px; white-space: nowrap; min-height: 44px; }
 .tabs button.on { border-color: var(--gold); color: var(--gold2); }
 .exlist, .items { display: flex; flex-direction: column; gap: 8px; }
@@ -386,9 +386,9 @@ main > .page.paged { flex: 1; padding: 10px 16px 8px; }
 .pin-row .ghost { flex: 0 0 auto; margin-top: 8px; }
 .pin-row .big { flex: 1; }
 .th-h { font-size: 12px; color: var(--gold); margin: 12px 0 6px; font-weight: 700; }
-.thumbs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; }
 .thumbs::-webkit-scrollbar { display: none; }
-.thumbs img { height: 120px; width: auto; border-radius: 8px; border: 1px solid var(--line); flex: none; }
+.thumbs img { width: 100%; height: auto; max-height: 150px; object-fit: contain; border-radius: 8px; border: 1px solid var(--line); flex: none; }
 
 /* ---- 選手登録（顔を選び、能力はランダム） ---- */
 .create h3 { margin: 10px 0 8px; }
@@ -740,3 +740,46 @@ img.rf { background: #ffd6e7; border: 2px solid #fff; }
 /* 筋肉のランク札に輪郭 */
 .rk { border: 1.5px solid var(--ink); }
 .title .bgm-title { display: block; margin: 12px auto 0; }
+
+/* 背の低い画面では、上の絵を少し小さくして下の内容を広く（スクロールなし・ページ数を減らす） */
+@media (max-height: 720px) and (orientation: portrait) { .viewer { height: 27dvh; } }
+@media (orientation: portrait) { .viewer-wrap:has(.preview-bar) .viewer { height: 24dvh; } }
+@media (max-height: 620px) and (orientation: portrait) { .viewer { height: 21dvh; } .viewer-wrap:has(.preview-bar) .viewer { height: 17dvh; } .preview-bar { padding: 6px 10px; gap: 6px; } }
+.pc-info .name-row { flex-wrap: wrap; gap: 4px 8px; }
+.pc-info .name-row h2 { word-break: keep-all; overflow-wrap: anywhere; }
+@media (max-width: 360px) { .pc-art { width: 72px; height: 96px; } .pc-info .name-row h2 { font-size: 18px; } }
+
+/* 横向きの背の低い画面：大会の演出は「左に絵・右に文字」で、1画面に収める */
+@media (orientation: landscape) and (max-height: 520px) {
+  .show { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto auto auto 1fr; align-content: start; justify-items: center; column-gap: 16px; padding: 10px 16px 64px; }
+  .show .pose-stage, .show .free-stage, .show .hero-pose, .show .reveal, .show .winner { grid-column: 1; grid-row: 1 / 5; width: min(40vw, 300px); height: calc(100dvh - 82px); margin-top: 0; }
+  .show .pose-call, .show .pose-eval, .show .show-cap, .show .show-place, .show .show-rank { grid-column: 2; margin-top: 8px; }
+  .show .pose-eval, .show .show-rank { width: min(46vw, 380px); }
+  .show .show-title, .show .show-head, .show .cmp-cap, .show .lineup6, .show .cmp3, .show .cmp-swap { grid-column: 1 / -1; }
+  .show .show-title { grid-row: 1 / 5; margin: auto 0; }
+  .show .show-head { margin-top: 4px; }
+  .show .lineup6 { grid-template-columns: repeat(6, 1fr); width: min(92vw, 600px); margin-top: 8px; }
+  .show .cmp3 { width: min(38vw, 250px); margin-top: 6px; }
+  .show .cmp-swap { margin-top: 4px; }
+  .show .calls { top: 196px; left: 50%; height: 80px; }
+  .show .notes i { bottom: 70px; }
+  .show-rank li { padding: 2px 10px; }
+}
+
+/* 横向きの背の低い画面：ページ送りのボタンと下のボタンを1行に並べ、内容の場所を広く */
+@media (orientation: landscape) and (max-height: 520px) {
+  .page.paged, .sheet.paged { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: minmax(0, 1fr) auto; column-gap: 10px; align-items: center; }
+  .page.paged > .pBody, .sheet.paged > .pBody { grid-column: 1 / -1; align-self: stretch; min-height: 0; }
+  .page.paged > .pNav, .sheet.paged > .pNav { grid-column: 1; }
+  .page.paged > .pNav.single + .pinned, .sheet.paged > .pNav.single + .pinned { grid-column: 1 / -1; }
+  .page.paged > .pinned, .sheet.paged > .pinned { margin-top: 8px; }
+  .pinned.big, .pinned .big { min-height: 42px; }
+  .pNav button { min-height: 36px; padding: 6px 14px; }
+  .bottom button { flex-direction: row; justify-content: center; gap: 5px; min-height: 40px; padding: 2px 0; }
+  .bottom svg { width: 19px; height: 19px; }
+  /* 衣装のカード：色の選択と購入ボタンを横に並べて背を低く */
+  .item.trunks { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; align-items: center; }
+  .item.trunks > * { grid-column: 1 / -1; }
+  .item.trunks > .swatches { grid-column: 1; grid-row: 4; }
+  .item.trunks > .item-f { grid-column: 2; grid-row: 4; margin-top: 0; }
+}

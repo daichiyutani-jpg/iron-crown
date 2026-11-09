@@ -465,7 +465,9 @@ function fittingScreen(s: GameState) {
     <div class="kv"><span>色ムラ</span><b>${fx(s.tan.uneven, 0)}</b></div>${bar(s.tan.uneven, 100, s.tan.uneven > 35 ? 'warn' : '')}
     <div class="kv"><span>肌のコンディション</span><b>${fx(s.tan.skin, 0)}</b></div>${bar(s.tan.skin, 100)}
     <div class="kv"><span>来週までに残る色</span><b>約${fx(s.tan.fade * 100, 0)}%</b></div>
-    <p class="hint">大会のステージでは、照明に負けない濃い色（目安85）と均一さが求められます。セルフタンニングで2〜3週前から下地を作り、前日に大会用カラーを重ねると仕上がりが安定します。スクラブを先に使うとムラが減ります。現在の持ち物で大会に出た場合の予想：色の濃さ ${fx(fin.level, 0)}・色ムラ ${fx(fin.uneven, 0)}。</p>
+    <p class="hint">大会のステージでは、照明に負けない濃い色（目安85）と均一さが求められます。</p>
+    <p class="hint">セルフタンニングで2〜3週前から下地を作り、前日に大会用カラーを重ねると仕上がりが安定します。スクラブを先に使うとムラが減ります。</p>
+    <p class="hint">現在の持ち物で大会に出た場合の予想：色の濃さ ${fx(fin.level, 0)}・色ムラ ${fx(fin.uneven, 0)}。</p>
     ${['scrub', 'tanBasic', 'tanPro', 'lotion'].map((id) => itemUseRow(s, id)).join('')}
     <h3>所有している衣装</h3>
     <div class="owned pg-split">${s.trunksOwned.map((k) => {
@@ -656,8 +658,8 @@ function modal(s: GameState | null) {
       ${coachArt('serious') ? `<div class="art modal-art"><img src="${coachArt('serious')}" alt=""></div>` : ''}
       <h3>${COACH_NAME}</h3><p class="meta">${COACH_ROLE}</p>
       <p>あなたの担当トレーナー。厳しいが、結果はいつも一緒に受け止めてくれる。週の結果や大会でアドバイスをくれる。</p>
-      ${faces.length ? `<h4 class="th-h">表情</h4><div class="thumbs">${faces.map((u) => `<img src="${u}" alt="" decoding="async">`).join('')}</div>` : ''}
-      ${pics.length ? `<h4 class="th-h">デザイン資料（正面・背面・側面）</h4><div class="thumbs">${pics.map((u) => `<img src="${u}" alt="" decoding="async">`).join('')}</div>` : ''}
+      ${faces.length ? `<h4 class="th-h">表情</h4><div class="thumbs pg-split">${faces.map((u) => `<img src="${u}" alt="" decoding="async">`).join('')}</div>` : ''}
+      ${pics.length ? `<h4 class="th-h">デザイン資料（正面・背面・側面）</h4><div class="thumbs pg-split">${pics.map((u) => `<img src="${u}" alt="" decoding="async">`).join('')}</div>` : ''}
       <button class="ghost big pg-pin" data-act="close-modal">閉じる</button></div></div>`;
   }
   if (ui.modal === 'rival') {
@@ -671,7 +673,7 @@ function modal(s: GameState | null) {
       <p>${esc(r.style)}</p>
       <div class="kv"><span>得意な部位</span><b>${PART_LABEL[top[0]]}・${PART_LABEL[top[1]]}</b></div>
       <div class="kv"><span>弱い部位</span><b>${PART_LABEL[top[top.length - 1]]}</b></div>
-      ${pics.length ? `<h4 class="th-h">大会のポーズと体の資料</h4><div class="thumbs">${pics.map((u) => `<img src="${u}" alt="" decoding="async">`).join('')}</div>` : ''}
+      ${pics.length ? `<h4 class="th-h">大会のポーズと体の資料</h4><div class="thumbs pg-split">${pics.map((u) => `<img src="${u}" alt="" decoding="async">`).join('')}</div>` : ''}
       <button class="ghost big pg-pin" data-act="close-modal">閉じる</button></div></div>`;
   }
   return '';

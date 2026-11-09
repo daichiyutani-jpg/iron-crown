@@ -18,7 +18,13 @@ const NO_SWIPE = '.rv-strip, .pose-row, .tabs, input, textarea, select, .chips';
  * onlyIfOverflow=true の時は、はみ出す時だけページ送りにする（モーダルなど、中身に合わせて高さが変わる枠）。
  */
 export function paginate(container: HTMLElement, key: string, onlyIfOverflow = false) {
-  if (onlyIfOverflow && container.scrollHeight <= container.clientHeight + 1) return;
+  if (onlyIfOverflow && container.scrollHeight <= container.clientHeight + 1) {
+    // 絵の読み込みが終わってからはみ出すこともあるので、読み込み後にもう一度確かめる
+    container.querySelectorAll('img').forEach((im) => {
+      if (!im.complete) im.addEventListener('load', () => { if (container.isConnected && !container.classList.contains('paged')) paginate(container, key, true); }, { once: true });
+    });
+    return;
+  }
   const kids = Array.from(container.children) as HTMLElement[];
   const body = document.createElement('div');
   body.className = 'pBody';
@@ -67,16 +73,26 @@ export function paginate(container: HTMLElement, key: string, onlyIfOverflow = f
     const top0 = body.getBoundingClientRect().top;
     // 枠より高いまとまりは枠の高さで切る
     for (const it of items) if (it.getBoundingClientRect().height > H) { it.style.maxHeight = `${Math.floor(H - 4)}px`; it.style.overflow = 'hidden'; }
-    const rects = items.map((it) => { const r = it.getBoundingClientRect(); return { top: r.top - top0, bottom: r.bottom - top0 }; });
+    // 一覧（pg-split）の中の要素は、一覧の下の余白・枠線の分も足して測る（一覧の枠が切れないように）
+    const tail = new Map<Element, number>();
+    for (const sp of splits) { const cs = getComputedStyle(sp); tail.set(sp, parseFloat(cs.paddingBottom) + parseFloat(cs.borderBottomWidth)); }
+    const rects = items.map((it) => { const r = it.getBoundingClientRect(); return { top: r.top - top0, bottom: r.bottom - top0 + (tail.get(it.parentElement!) ?? 0) }; });
     starts = [0];
-    let pageTop = rects[0].top;
+    // ページの先頭になった要素は、上の余白（margin）の分だけ下から始まる
+    const mTop = (el: HTMLElement) => {
+      let m = parseFloat(getComputedStyle(el).marginTop) || 0;
+      const par = el.parentElement!;
+      if (tail.has(par)) { const cs = getComputedStyle(par); m += (parseFloat(cs.marginTop) || 0) + parseFloat(cs.paddingTop) + parseFloat(cs.borderTopWidth); }
+      return m;
+    };
+    let pageTop = Math.min(0, rects[0].top);
     for (let i = 1; i < items.length; i++) {
       if (rects[i].bottom - pageTop > H) {
         let s = i;
         // 見出しだけがページの最後に残らないよう、見出しごと次のページへ送る
         while (s - 1 > starts[starts.length - 1] && /^H[34]$/.test(items[s - 1].tagName)) s--;
         starts.push(s);
-        pageTop = rects[s].top;
+        pageTop = rects[s].top - mTop(items[s]);
         i = s;
       }
     }
@@ -96,6 +112,20 @@ export function paginate(container: HTMLElement, key: string, onlyIfOverflow = f
     if (body.clientWidth !== lastW || Math.abs(body.clientHeight - lastH) > 1) layout();
   });
   ro.observe(body);
+  // 中身の高さが後から変わった時（数字の演出・絵の読み込みなど）も数え直す
+  const seen = new WeakMap<Element, number>();
+  let queued = 0;
+  const itemRo = new ResizeObserver((ents) => {
+    if (!body.isConnected) { itemRo.disconnect(); return; }
+    let changed = false;
+    for (const e of ents) {
+      const h = Math.round(e.contentRect.height);
+      if (!e.target.classList.contains('pgOff') && h > 0 && seen.has(e.target) && Math.abs(seen.get(e.target)! - h) > 2) changed = true;
+      if (h > 0) seen.set(e.target, h);
+    }
+    if (changed && !queued) queued = requestAnimationFrame(() => { queued = 0; layout(); });
+  });
+  items.forEach((it) => itemRo.observe(it));
   // 開閉する要素（details）や読み込み後の絵で高さが変わったら数え直す
   body.addEventListener('toggle', () => layout(), true);
   body.querySelectorAll('img').forEach((im) => { if (!im.complete) im.addEventListener('load', () => layout(), { once: true }); });
