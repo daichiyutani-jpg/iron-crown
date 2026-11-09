@@ -321,7 +321,8 @@ img.rf { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; objec
 .co-say.big b small { display: block; margin: 2px 0 4px; }
 
 /* 大会の演出（絵は上、順位は下で重ねない） */
-.show { position: fixed; inset: 0; z-index: 60; background: #03050b; color: #fff; overflow: hidden; display: flex; flex-direction: column; align-items: center; cursor: pointer; animation: showIn .4s ease; }
+.show { position: fixed; inset: 0; z-index: 60; background: #03050b; color: #fff; overflow: hidden; display: flex; flex-direction: column; align-items: center; cursor: pointer; }
+.show.step-0 { animation: showIn .4s ease; }
 @keyframes showIn { from { opacity: 0; } }
 .show-bg { position: absolute; inset: 0; }
 .show-bg img { width: 100%; height: 100%; object-fit: cover; }

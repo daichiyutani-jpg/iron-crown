@@ -681,7 +681,10 @@ function render() {
       case 'contest': body = s.result ? resultScreen(s) : contestScreen(s); break;
       case 'result': body = s.result ? resultScreen(s) : contestScreen(s); break;
     }
-    html = `${header(s)}<main class="r-${ui.route === 'contest' && s.result ? 'result' : ui.route}">${body}</main>${nav()}${modal(s)}${ui.show >= 0 && s.result ? showHtml(s, ui.show) : ''}`;
+    // 大会の演出の間は、下の結果画面を描かない（順位が透けて見えないように）
+    html = ui.show >= 0 && s.result
+      ? showHtml(s, ui.show)
+      : `${header(s)}<main class="r-${ui.route === 'contest' && s.result ? 'result' : ui.route}">${body}</main>${nav()}${modal(s)}`;
   }
   root.innerHTML = html;
   setTrack(trackFor(s));
