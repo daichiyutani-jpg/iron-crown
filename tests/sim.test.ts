@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { advanceWeek, bodyStats, buyItem, buyTrunks, canAddAction, growthRate, newGame, rollPlayer, useItem, type Action, type GameState, type PlayerInfo } from '../src/game/rules';
-import { heroStage, shapeScore } from '../src/ui/art';
+import { heroStage } from '../src/ui/art';
 import { runContest } from '../src/game/scoring';
 import type { Category } from '../src/game/data';
 
@@ -132,22 +132,17 @@ describe('ランダムな選手', () => {
       const r = rollPlayer(seed * 977);
       const { r: res } = playGood(r.category, seed, { ...r, name: 't', skinTone: 1, face: 'a' });
       places.push(res.playerPlace);
-      const me = res.ranking.find((c) => c.isPlayer)!; console.log('roll', r.category, r.frame, r.heightCm, r.talent, r.growth, 'bf0', r.start!.bf, 'bf', me.bodyFat.toFixed(1), 'w', me.weight.toFixed(1), 'place', res.playerPlace, Object.entries(me.scores).map(([k, v]) => k + v.toFixed(0)).join(' '));
     }
-    console.log('rolled places', places.join(','));
     expect(places.reduce((a, b) => a + b, 0) / places.length).toBeLessThanOrEqual(3);
   });
   it('育てると見た目の段階が1から5へ上がり、放置では上がらない', () => {
     for (const seed of [1, 2, 3]) {
-      const stages: number[] = []; const scores: string[] = [];
-      let s0: GameState | null = null;
-      playGood('bodybuilding', seed, undefined, (s) => { s0 ??= s; stages.push(heroStage(s)); scores.push(shapeScore(s).toFixed(1)); });
-      console.log('stages', seed, stages.join(''), scores.join(' '));
+      const stages: number[] = [];
+      playGood('bodybuilding', seed, undefined, (s) => stages.push(heroStage(s)));
       expect(stages[stages.length - 1]).toBe(5);
       expect(new Set(stages).size).toBeGreaterThanOrEqual(4);
     }
     const lazy = playLazy('bodybuilding', 3).s;
-    console.log('lazy score', shapeScore(lazy).toFixed(1));
     expect(heroStage(lazy)).toBeLessThanOrEqual(2);
   });
 });

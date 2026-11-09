@@ -1,0 +1,32 @@
+{
+ "a-s1-pose": [
+  "https://cdn.leonardo.ai/users/942bec89-7c2f-4b70-a4e5-1d117e0d809d/generations/1f1dc059-376f-6530-b10d-32590e95a809/bytedance/seedream-5.0-flash_Use_the_reference_image_only_for_the_character_s_identity_keep_exactly_the_same_-0.jpg"
+ ],
+ "a-s2-sheet-front": [
+  "https://cdn.leonardo.ai/users/942bec89-7c2f-4b70-a4e5-1d117e0d809d/generations/1f1dc05a-1538-6ab0-a63b-451f3381fd4f/bytedance/seedream-5.0-flash_Use_the_reference_image_only_for_the_character_s_identity_keep_exactly_the_same_-0.jpg"
+ ],
+ "a-s2-sheet-back": [
+  "https://cdn.leonardo.ai/users/942bec89-7c2f-4b70-a4e5-1d117e0d809d/generations/1f1dc05a-c983-6740-9bab-e0e0e5e867a7/bytedance/seedream-5.0-flash_Use_the_reference_image_only_for_the_character_s_identity_keep_exactly_the_same_-0.jpg"
+ ],
+ "a-s2-sheet-side": [
+  "https://cdn.leonardo.ai/users/942bec89-7c2f-4b70-a4e5-1d117e0d809d/generations/1f1dc05b-a52c-65d0-8cd3-7e7e65e24e1b/bytedance/seedream-5.0-flash_Use_the_reference_image_only_for_the_character_s_identity_keep_exactly_the_same_-0.jpg"
+ ],
+ "a-s2-pose": [
+  "https://cdn.leonardo.ai/users/942bec89-7c2f-4b70-a4e5-1d117e0d809d/generations/1f1dc05c-6c7d-6c10-9f74-1623f7c251d1/bytedance/seedream-5.0-flash_Use_the_reference_image_only_for_the_character_s_identity_keep_exactly_the_same_-0.jpg"
+ ],
+ "a-s3-pose": [
+  "https://cdn.leonardo.ai/users/942bec89-7c2f-4b70-a4e5-1d117e0d809d/generations/1f1dc05d-569b-6d60-9617-4f8123f435e0/bytedance/seedream-5.0-flash_Use_the_reference_image_only_for_the_character_s_identity_keep_exactly_the_same_-0.jpg"
+ ],
+ "a-s4-sheet-front": [
+  "https://cdn.leonardo.ai/users/942bec89-7c2f-4b70-a4e5-1d117e0d809d/generations/1f1dc05e-35ac-6540-a936-43c621a5387a/bytedance/seedream-5.0-flash_Use_the_reference_image_only_for_the_character_s_identity_keep_exactly_the_same_-0.jpg"
+ ],
+ "a-s4-sheet-back": [
+  "https://cdn.leonardo.ai/users/942bec89-7c2f-4b70-a4e5-1d117e0d809d/generations/1f1dc05e-f552-6d40-a41b-468af1c270e4/bytedance/seedream-5.0-flash_Use_the_reference_image_only_for_the_character_s_identity_keep_exactly_the_same_-0.jpg"
+ ],
+ "a-s4-sheet-side": [
+  "https://cdn.leonardo.ai/users/942bec89-7c2f-4b70-a4e5-1d117e0d809d/generations/1f1dc060-01d4-69f0-a007-8c141c38f454/bytedance/seedream-5.0-flash_Use_the_reference_image_only_for_the_character_s_identity_keep_exactly_the_same_-0.jpg"
+ ],
+ "a-s4-pose": [
+  "https://cdn.leonardo.ai/users/942bec89-7c2f-4b70-a4e5-1d117e0d809d/generations/1f1dc060-bed4-6690-bdae-b4a47eb9cf15/bytedance/seedream-5.0-flash_Use_the_reference_image_only_for_the_character_s_identity_keep_exactly_the_same_-0.jpg"
+ ]
+}

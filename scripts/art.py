@@ -4,7 +4,7 @@
   python scripts/art.py sheet                       # 候補を並べた確認用シート design/candidates/_sheet_<段階>.jpg
   python scripts/art.py import                      # design/picks.json {"<key>": "<候補ファイル名>"} → public/art/hero|rivals/<key>.webp と src/ui/artList.ts
 """
-import json
+import json, re
 import string
 import subprocess
 import sys
@@ -59,14 +59,15 @@ def sheet():
 
 
 def do_import():
-    """picks.json の r1〜r5 で始まるキーはライバル（public/art/rivals/）、c- はトレーナー（public/art/coach/）、v- は会場（public/art/venue/）（どちらも接頭辞を外した名前）、それ以外は主人公（public/art/hero/）"""
+    """picks.json の r1〜r5 で始まるキーはライバル（public/art/rivals/）、c- はトレーナー（public/art/coach/。ただし 顔-s段階-用途 の形は主人公）、v- は会場（public/art/venue/）（どちらも接頭辞を外した名前）、それ以外は主人公（public/art/hero/）"""
     picks = json.loads((ROOT / 'design' / 'picks.json').read_text(encoding='utf-8'))
     for d in (OUT, OUT_R, OUT_C, OUT_V): d.mkdir(parents=True, exist_ok=True)
     for key, fn in picks.items():
         im = Image.open(CAND / fn).convert('RGB')
         if im.width > 832:
             im = im.resize((832, round(832 * im.height / im.width)), Image.LANCZOS)
-        if key.startswith('c-'): dst, key = OUT_C, key[2:]
+        if re.match(r'^[abc]-s\d-', key): dst = OUT  # 主人公（顔-s段階-用途）
+        elif key.startswith('c-'): dst, key = OUT_C, key[2:]
         elif key.startswith('v-'): dst, key = OUT_V, key[2:]
         else: dst = OUT_R if key[0] == 'r' and key[1].isdigit() else OUT
         im.save(dst / f'{key}.webp', quality=82, method=6)
